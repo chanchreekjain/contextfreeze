@@ -7,6 +7,7 @@ import type {
   SelectionSnapshot,
 } from "../types";
 import { RESUME_REWIND_SECONDS } from "../constants";
+import { deepQueryAll, shadowRoots } from "./dom";
 import { resolve, textOf } from "./element-path";
 import { findTextRange } from "./text-range";
 
@@ -127,7 +128,7 @@ export function resolveMedia(state: MediaState): HTMLMediaElement | null {
   const byRef = resolve(state.ref);
   if (byRef instanceof HTMLMediaElement) return byRef;
 
-  const sameTag = Array.from(document.querySelectorAll<HTMLMediaElement>(state.tag));
+  const sameTag = deepQueryAll<HTMLMediaElement>(state.tag);
   if (sameTag.length === 1) return sameTag[0] ?? null;
   return sameTag[state.index] ?? null;
 }
@@ -288,13 +289,19 @@ function paintHighlight(range: Range): boolean {
   const registry = (CSS as unknown as { highlights?: HighlightRegistry }).highlights;
   if (!ctor || !registry) return false;
 
-  if (!document.getElementById(HIGHLIGHT_STYLE_ID)) {
+  const rule = "::highlight(" + HIGHLIGHT_NAME + "){background:#ffe066;color:#000;}";
+  const addStyle = (target: Document | ShadowRoot) => {
+    if (target.getElementById(HIGHLIGHT_STYLE_ID)) return;
     const style = document.createElement("style");
     style.id = HIGHLIGHT_STYLE_ID;
-    style.textContent =
-      "::highlight(" + HIGHLIGHT_NAME + "){background:#ffe066;color:#000;}";
-    document.head.appendChild(style);
-  }
+    style.textContent = rule;
+    (target === document ? document.head : (target as ShadowRoot)).appendChild(style);
+  };
+  addStyle(document);
+  // A highlight registry is global, but the ::highlight() rule is not - it has
+  // to exist inside the tree that owns the range, or nothing is painted.
+  const rangeRoot = range.startContainer.getRootNode();
+  if (rangeRoot instanceof ShadowRoot) addStyle(rangeRoot);
   registry.set(HIGHLIGHT_NAME, new ctor(range));
 
   // Step aside as soon as the USER highlights something of their own.
@@ -381,7 +388,15 @@ function applySelection(
   const scope = (snapshot.ref ? resolve(snapshot.ref) : null) ?? document.body;
   if (!scope) return false;
 
-  const range = findTextRange(scope, snapshot.text);
+  let range = findTextRange(scope, snapshot.text);
+  if (!range && scope === document.body) {
+    // The text may live inside a web component. Light DOM first, because it is
+    // far cheaper and is where the text usually is.
+    for (const root of shadowRoots()) {
+      range = findTextRange(root, snapshot.text);
+      if (range) break;
+    }
+  }
   if (!range) return false;
 
   // Inside an editor you are coming back to *edit*, so a real focused selection

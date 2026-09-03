@@ -64,11 +64,14 @@ if (!window.__contextFreezeLoaded && window.top === window) {
     }
 
     if (message.type === "CF_NAME_PROMPT") {
-      const { id, defaultLabel, kind } = message;
-      void askForName(defaultLabel, kind).then((label) => {
-        if (label) {
-          void chrome.runtime.sendMessage({ type: "CF_RENAME_CHECKPOINT", id, label }).catch(() => {});
-        }
+      const { target, id, defaultLabel, title } = message;
+      void askForName(defaultLabel, title).then((label) => {
+        if (!label) return;
+        const rename =
+          target === "freeze"
+            ? { type: "CF_RENAME_FREEZE", id, name: label }
+            : { type: "CF_RENAME_CHECKPOINT", id, label };
+        void chrome.runtime.sendMessage(rename).catch(() => {});
       });
       sendResponse({ ok: true });
       return true;

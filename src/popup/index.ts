@@ -165,7 +165,7 @@ function describeFreeze(freeze: Freeze): string {
   return bits.join(" · ");
 }
 
-function renderRow(freeze: Freeze): HTMLLIElement {
+function renderRow(freeze: Freeze, editing: boolean): HTMLLIElement {
   const fragment = rowTemplate.content.cloneNode(true) as DocumentFragment;
   const row = fragment.querySelector(".row") as HTMLLIElement;
   const nameButton = row.querySelector(".name") as HTMLButtonElement;
@@ -177,12 +177,14 @@ function renderRow(freeze: Freeze): HTMLLIElement {
   nameButton.title = freeze.name;
   meta.textContent = describeFreeze(freeze);
 
-  nameButton.addEventListener("click", () =>
+  const rename = () =>
     beginEdit(nameButton, freeze.name, async (name) => {
       await chrome.runtime.sendMessage({ type: "CF_RENAME_FREEZE", id: freeze.id, name });
       await refresh();
-    }),
-  );
+    });
+
+  nameButton.addEventListener("click", rename);
+  if (editing) queueMicrotask(rename);
 
   restoreButton.addEventListener("click", async () => {
     restoreButton.disabled = true;
@@ -349,9 +351,9 @@ async function mark(kind: CheckpointKind, button: HTMLButtonElement): Promise<vo
 markSpotButton.addEventListener("click", () => void mark("position", markSpotButton));
 markMomentButton.addEventListener("click", () => void mark("media", markMomentButton));
 
-async function refresh(): Promise<void> {
+async function refresh(editId?: string): Promise<void> {
   const { freezes }: ListResponse = await chrome.runtime.sendMessage({ type: "CF_LIST_FREEZES" });
-  listEl.replaceChildren(...freezes.map(renderRow));
+  listEl.replaceChildren(...freezes.map((f) => renderRow(f, f.id === editId)));
   emptyEl.hidden = freezes.length > 0;
 }
 
@@ -371,19 +373,23 @@ freezeButton.addEventListener("click", async () => {
     windowId: win.id,
   });
 
+  freezeButton.disabled = false;
+
   if (!result.ok) {
     setStatus(result.error);
-  } else if (result.skipped) {
-    setStatus(
-      "Frozen. " + result.skipped + " tab" + (result.skipped === 1 ? "" : "s") +
-        " could not be read - reload and freeze again to include them.",
-    );
-  } else {
-    setStatus("Frozen.");
+    await refresh();
+    return;
   }
 
-  freezeButton.disabled = false;
-  await refresh();
+  setStatus(
+    result.skipped
+      ? `Frozen. ${result.skipped} tab${result.skipped === 1 ? "" : "s"} could not be read - ` +
+        "reload and freeze again to include them."
+      : "Frozen. Type a name, or press Escape to keep the timestamp.",
+  );
+  // Straight into naming it. A list of timestamps is not something you can
+  // search through a week later.
+  await refresh(result.freeze.id);
 });
 
 void (async () => {

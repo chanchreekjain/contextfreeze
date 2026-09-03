@@ -19,7 +19,7 @@ await page.waitForTimeout(2400);
 const inputsBefore = await page.evaluate(() => document.querySelectorAll("input").length);
 
 await page.evaluate(() => {
-  window.__name = window.__cf.askForName("Paragraph 160 - the quick brown fox", "position");
+  window.__name = window.__cf.askForName("Paragraph 160 - the quick brown fox", "Name this checkpoint");
 });
 const namer = page.locator('[data-contextfreeze="namer"] input');
 await namer.waitFor({ state: "visible", timeout: 3000 });
@@ -46,7 +46,7 @@ check("the overlay is removed afterwards",
   (await page.locator('[data-contextfreeze="namer"]').count()) === 0);
 
 console.log("\n== keeping the default ==");
-await page.evaluate(() => { window.__name2 = window.__cf.askForName("12:05", "media"); });
+await page.evaluate(() => { window.__name2 = window.__cf.askForName("12:05", "Name this flag"); });
 await namer.waitFor({ state: "visible", timeout: 3000 });
 await namer.press("Escape");
 check("Escape resolves null, leaving the default label alone",
@@ -56,7 +56,7 @@ console.log("\n== it does not leak keys to the page ==");
 await page.evaluate(() => {
   window.__pageSawKeys = 0;
   document.addEventListener("keydown", () => { window.__pageSawKeys++; });
-  window.__name3 = window.__cf.askForName("x", "position");
+  window.__name3 = window.__cf.askForName("x", "Name this checkpoint");
 });
 await namer.waitFor({ state: "visible", timeout: 3000 });
 await namer.press("Escape");

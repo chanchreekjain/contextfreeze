@@ -37,9 +37,10 @@ export interface DropMsg { type: "CF_DROP"; kind: CheckpointKind }
 export interface JumpMsg { type: "CF_JUMP"; checkpoint: Checkpoint }
 export interface NamePromptMsg {
   type: "CF_NAME_PROMPT";
+  target: "checkpoint" | "freeze";
   id: string;
   defaultLabel: string;
-  kind: CheckpointKind;
+  title: string;
 }
 
 export type CheckpointDraft = Omit<Checkpoint, "id" | "key">;

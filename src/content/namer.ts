@@ -52,7 +52,7 @@ input:focus { outline: 2px solid #6ea8fe; outline-offset: -1px; }
  * kept the default. Naming is always optional - the checkpoint already exists
  * and already has a sensible label by the time this appears.
  */
-export function askForName(defaultLabel: string, kind: "position" | "media"): Promise<string | null> {
+export function askForName(defaultLabel: string, title: string): Promise<string | null> {
   // Never stack two.
   document.querySelectorAll(`[${HOST_ATTR}="namer"]`).forEach((el) => el.remove());
 
@@ -72,7 +72,7 @@ export function askForName(defaultLabel: string, kind: "position" | "media"): Pr
       '<p class="hint">Enter to save · Esc to cancel</p>';
 
     const titleText = card.querySelector(".title span:last-child") as HTMLElement;
-    titleText.textContent = kind === "media" ? "Name this flag" : "Name this checkpoint";
+    titleText.textContent = title;
 
     const input = card.querySelector("input") as HTMLInputElement;
     input.value = defaultLabel;

@@ -83,7 +83,7 @@ A freeze captures a whole window. A **checkpoint** captures one named place
 - **Flag this moment** (`Ctrl+Shift+Y`) drops a flag at the current second of a
   video or podcast, labelled `12:05`.
 - Many per page. Click **Jump** in the popup to go straight there.
-- **Name it as you drop it.** A checkpoint always arrives with a sensible label
+- **Name it as you drop it.** (Freezes too — see below.) A checkpoint always arrives with a sensible label
   already filled in, so naming stays optional: a keyboard-shortcut drop shows a
   small in-page prompt (Enter to save, Escape to keep the default, and it
   disappears on its own after 12s), and a drop from the popup goes straight into
@@ -93,6 +93,10 @@ A freeze captures a whole window. A **checkpoint** captures one named place
   over through the same handshake a restore uses.
 - A flag jumps to the **exact** second you marked. (The 3-second rewind applies
   to resuming a freeze, not to a mark you placed deliberately.)
+
+Freezes work the same way: after **Freeze this window** the new row goes
+straight into being renamed, and `Ctrl+Shift+F` shows the in-page prompt. A list
+of timestamps is not something you can search through a week later.
 
 ### "Remember where I left off"
 
@@ -145,6 +149,24 @@ The cases nothing else covers: long documentation with a scrolled sidebar,
 search results and forum threads deep in a scroll, video players without resume,
 dashboards and forms with no autosave, and — the one nothing else does at all —
 **the sentence you had highlighted**.
+
+## Web components and shadow DOM
+
+Capture and restore cross **open shadow roots**. This is not a nicety: Reddit's
+comment composer is a web component, so `document.querySelectorAll` could not
+see it and an unposted draft comment was never captured at all — no error, no
+clue, just nothing to restore. Meanwhile the highlight on the same page worked
+fine, because a Reddit post body is ordinary light DOM. That asymmetry is what
+gave it away.
+
+Stored element paths use ` >>> ` to mark a hop into a shadow root, and ids and
+`name` attributes found inside one are **not** recorded as document-wide
+shortcuts — inside a shadow tree an id is scoped to that tree, and the same id
+repeats across every instance of a component, so a document-wide lookup would
+cheerfully hand back a different instance's field.
+
+**Closed** shadow roots stay unreachable. Nothing can be done about those from a
+content script.
 
 ## What it will not do
 
@@ -217,6 +239,7 @@ src/
 │   ├── capture.ts         reading the context layer off a live page
 │   ├── restore.ts         the retry loop (the hard part)
 │   ├── checkpoint.ts      dropping and jumping to a single marked place
+│   ├── dom.ts             traversal that crosses open shadow boundaries
 │   ├── namer.ts           the in-page "name this checkpoint" prompt
 │   └── text-range.ts      re-finding a highlight across text nodes
 └── popup/index.ts         the UI
@@ -251,6 +274,10 @@ while initialising. Plus the URL rewrite, exercised directly.
 
 `test/export.test.mjs` — the serialisers, including that a corrupt bundle keeps
 its good entries and that junk is refused outright. Pure functions, no browser.
+
+`test/shadow-dom.test.mjs` — the Reddit case: a web component whose editor is
+inside an open shadow root, proving the draft is captured, restored, and that a
+highlight made in there is painted back in the same tree.
 
 `test/checkpoints.test.mjs` — marking a spot and jumping back to it, flagging a
 moment and landing on the exact second, and the page-keying rules that keep a

@@ -229,9 +229,10 @@ async function addCheckpoint(
     void chrome.tabs
       .sendMessage(tabId, {
         type: "CF_NAME_PROMPT",
+        target: "checkpoint",
         id,
         defaultLabel: draft.label,
-        kind,
+        title: kind === "media" ? "Name this flag" : "Name this checkpoint",
       })
       .catch(() => {});
   }
@@ -370,6 +371,23 @@ chrome.commands.onCommand.addListener((command) => {
       if (win.id == null) return;
       const result = await freezeWindow(win.id);
       await flashBadge(result.ok ? String(result.freeze.tabs.length) : "!");
+
+      // Same courtesy as a checkpoint: name it now, while you still remember
+      // what this window was for. A list of timestamps is unsearchable.
+      if (result.ok) {
+        const [tab] = await chrome.tabs.query({ active: true, windowId: win.id });
+        if (tab?.id != null) {
+          void chrome.tabs
+            .sendMessage(tab.id, {
+              type: "CF_NAME_PROMPT",
+              target: "freeze",
+              id: result.freeze.id,
+              defaultLabel: result.freeze.name,
+              title: "Name this freeze",
+            })
+            .catch(() => {});
+        }
+      }
       return;
     }
 

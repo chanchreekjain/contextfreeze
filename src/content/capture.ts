@@ -5,6 +5,7 @@ import type {
   ScrollAnchor,
   SelectionSnapshot,
 } from "../types";
+import { deepQueryAll } from "./dom";
 import { describe, textOf } from "./element-path";
 
 /** Below this many pixels a scroll offset is not worth restoring. */
@@ -56,7 +57,15 @@ function anchorAtPoint(
 ): { el: Element; offset: number } | null {
   if (x < 0 || y < 0 || x > window.innerWidth || y > window.innerHeight) return null;
 
-  const stack = document.elementsFromPoint(x, y);
+  const stack = [...document.elementsFromPoint(x, y)];
+  // elementsFromPoint hands back the shadow HOST, not what is rendered inside
+  // it, so step down through open roots at the same point.
+  for (let i = 0; i < stack.length; i++) {
+    const host = stack[i];
+    const inner = host?.shadowRoot?.elementFromPoint(x, y);
+    if (inner && inner !== host && !stack.includes(inner)) stack.splice(i, 0, inner);
+  }
+
   for (const el of stack) {
     if (!(el instanceof HTMLElement)) continue;
     if (container && !container.contains(el)) continue;
@@ -123,7 +132,7 @@ export function primaryMedia(): { el: HTMLMediaElement; state: MediaState } | nu
   const counts = { video: 0, audio: 0 };
   let best: { el: HTMLMediaElement; state: MediaState; area: number } | null = null;
 
-  for (const el of document.querySelectorAll<HTMLMediaElement>("video, audio")) {
+  for (const el of deepQueryAll<HTMLMediaElement>("video, audio")) {
     const tag = el.tagName.toLowerCase() === "audio" ? "audio" : "video";
     const index = counts[tag]++;
     if (el.readyState < 1 && !el.currentSrc && !el.src) continue;
@@ -161,7 +170,7 @@ export function captureScrolls(): ScrollAnchor[] {
   // Nested scrollers - docs sidebars, chat panes, code viewers. This is the bit
   // plain tab managers never capture, and often the bit you actually lose.
   let found = 0;
-  for (const el of document.querySelectorAll("*")) {
+  for (const el of deepQueryAll("*")) {
     if (found >= MAX_NESTED_SCROLLERS) break;
     if (el.scrollTop <= MIN_SCROLL_PX && el.scrollLeft <= MIN_SCROLL_PX) continue;
     const rect = el.getBoundingClientRect();
@@ -183,10 +192,26 @@ export function captureScrolls(): ScrollAnchor[] {
   return out;
 }
 
-export function captureFields(): FormFieldValue[] {
+/**
+ * Everything capture cares about, in one selector. Walking the page (and every
+ * open shadow root in it) once per element kind would be several full
+ * traversals of a large document for no reason.
+ */
+export const CANDIDATE_SELECTOR =
+  'input, textarea, select, [contenteditable=""], [contenteditable="true"], video, audio';
+
+export function collectCandidates(): Element[] {
+  return deepQueryAll(CANDIDATE_SELECTOR);
+}
+
+function pick<T extends Element>(candidates: Element[], match: (el: Element) => boolean): T[] {
+  return candidates.filter(match) as T[];
+}
+
+export function captureFields(candidates: Element[] = collectCandidates()): FormFieldValue[] {
   const out: FormFieldValue[] = [];
 
-  for (const el of document.querySelectorAll("input")) {
+  for (const el of pick<HTMLInputElement>(candidates, (e) => e instanceof HTMLInputElement)) {
     const type = (el.type || "text").toLowerCase();
     if (SKIPPED_INPUT_TYPES.has(type)) continue;
 
@@ -212,12 +237,12 @@ export function captureFields(): FormFieldValue[] {
     });
   }
 
-  for (const el of document.querySelectorAll("textarea")) {
+  for (const el of pick<HTMLTextAreaElement>(candidates, (e) => e instanceof HTMLTextAreaElement)) {
     if (!el.value || el.value === el.defaultValue) continue;
     out.push({ ref: describe(el), kind: "textarea", value: el.value.slice(0, MAX_FIELD_CHARS) });
   }
 
-  for (const el of document.querySelectorAll("select")) {
+  for (const el of pick<HTMLSelectElement>(candidates, (e) => e instanceof HTMLSelectElement)) {
     const selected: number[] = [];
     let changed = false;
     for (let i = 0; i < el.options.length; i++) {
@@ -230,7 +255,10 @@ export function captureFields(): FormFieldValue[] {
     out.push({ ref: describe(el), kind: "select", value: el.value, selectedIndexes: selected });
   }
 
-  for (const el of document.querySelectorAll<HTMLElement>('[contenteditable=""], [contenteditable="true"]')) {
+  for (const el of pick<HTMLElement>(
+    candidates,
+    (e) => e instanceof HTMLElement && e.isContentEditable,
+  )) {
     const html = el.innerHTML;
     if (!html || !el.innerText.trim()) continue;
     out.push({ ref: describe(el), kind: "contenteditable", value: html.slice(0, MAX_FIELD_CHARS) });
@@ -239,10 +267,10 @@ export function captureFields(): FormFieldValue[] {
   return out;
 }
 
-export function captureMedia(): MediaState[] {
+export function captureMedia(candidates: Element[] = collectCandidates()): MediaState[] {
   const out: MediaState[] = [];
   const counts = { video: 0, audio: 0 };
-  for (const el of document.querySelectorAll<HTMLMediaElement>("video, audio")) {
+  for (const el of pick<HTMLMediaElement>(candidates, (e) => e instanceof HTMLMediaElement)) {
     const tag = el.tagName.toLowerCase() === "audio" ? "audio" : "video";
     const index = counts[tag]++;
     if (!Number.isFinite(el.currentTime) || el.currentTime < MIN_MEDIA_SECONDS) continue;
@@ -313,12 +341,13 @@ export function captureSelection(): SelectionSnapshot | null {
 }
 
 export function capturePage(): PageContext {
+  const candidates = collectCandidates();
   return {
     url: location.href,
     capturedAt: Date.now(),
     scrolls: captureScrolls(),
-    fields: captureFields(),
-    media: captureMedia(),
+    fields: captureFields(candidates),
+    media: captureMedia(candidates),
     selection: captureSelection(),
   };
 }

@@ -92,6 +92,10 @@ ${sideLines}
      and the app then focuses it and slams the caret to the end - twice. -->
 <div id="editor" contenteditable="true"></div>
 
+<!-- Stands in for Reddit's comment composer: a web component whose editor lives
+     inside an open shadow root, where document.querySelectorAll cannot see it. -->
+<my-composer id="composer"></my-composer>
+
 <audio id="clip" src="clip.wav" preload="metadata" controls></audio>
 
 <!-- Stands in for a real site player: it has no id, it re-parents itself into a
@@ -149,6 +153,20 @@ ${paragraphs}
   }
   setTimeout(meddle, 1600);
   setTimeout(meddle, 2400);
+
+  // A web component with an open shadow root, holding both a plain field and a
+  // rich-text editor - the shape Reddit's composer takes.
+  class MyComposer extends HTMLElement {
+    connectedCallback() {
+      const root = this.attachShadow({ mode: 'open' });
+      root.innerHTML =
+        '<style>.box{border:1px solid #999;padding:6px;min-height:40px}</style>' +
+        '<input id="subject" name="subject" type="text">' +
+        '<div id="body" class="box" contenteditable="true"></div>' +
+        '<p id="quote">Nested shadow text about the failure modes of tab managers.</p>';
+    }
+  }
+  customElements.define('my-composer', MyComposer);
 </script>
 </body>
 </html>
