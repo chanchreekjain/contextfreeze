@@ -8,11 +8,13 @@
     "build": "node build.mjs",
     "watch": "node build.mjs --watch",
     "typecheck": "tsc --noEmit",
-    "clean": "node -e \"import('node:fs').then(f=>f.rmSync('dist',{recursive:true,force:true}))\""
+    "fixtures": "node test/make-fixture.mjs",
+    "test": "npm run fixtures && node test/roundtrip.test.mjs && node test/edge-cases.test.mjs"
   },
   "devDependencies": {
     "@types/chrome": "^0.0.287",
     "esbuild": "^0.24.0",
+    "playwright": "^1.49.0",
     "typescript": "^5.6.3"
   }
 }

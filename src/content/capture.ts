@@ -69,13 +69,35 @@ function anchorAtPoint(
   return null;
 }
 
+/**
+ * The very top of the viewport is often an image, a video, a sticky header or a
+ * full-height layout wrapper - none of which make usable anchors. Falling back
+ * to the raw pixel offset when that happens costs us the whole point of the
+ * anchor, so probe a few rows further down before giving up.
+ */
+const ANCHOR_PROBE_OFFSETS = [8, 48, 120, 240, 400];
+
+function findAnchor(
+  x: number,
+  top: number,
+  height: number,
+  container: Element | null,
+): { el: Element; offset: number } | null {
+  for (const dy of ANCHOR_PROBE_OFFSETS) {
+    if (dy > height) break;
+    const found = anchorAtPoint(Math.round(x), Math.round(top + dy), top, container);
+    if (found) return found;
+  }
+  return null;
+}
+
 export function captureScrolls(): ScrollAnchor[] {
   const out: ScrollAnchor[] = [];
 
   const docTop = window.scrollY || document.documentElement.scrollTop || 0;
   const docLeft = window.scrollX || document.documentElement.scrollLeft || 0;
   if (docTop > MIN_SCROLL_PX || docLeft > MIN_SCROLL_PX) {
-    const found = anchorAtPoint(Math.round(window.innerWidth / 2), 8, 0, null);
+    const found = findAnchor(window.innerWidth / 2, 0, window.innerHeight, null);
     out.push({
       container: null,
       scrollTop: docTop,
@@ -96,12 +118,7 @@ export function captureScrolls(): ScrollAnchor[] {
     if (rect.width < 80 || rect.height < 80) continue;
     if (!isScrollable(el)) continue;
 
-    const anchor = anchorAtPoint(
-      Math.round(rect.left + rect.width / 2),
-      Math.round(rect.top + 8),
-      rect.top,
-      el,
-    );
+    const anchor = findAnchor(rect.left + rect.width / 2, rect.top, rect.height, el);
     out.push({
       container: describe(el),
       scrollTop: el.scrollTop,

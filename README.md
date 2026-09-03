@@ -116,6 +116,38 @@ src/
 
 ---
 
+## Tests
+
+```bash
+npx playwright install chromium   # once
+npm test
+```
+
+`capture.ts` and `restore.ts` touch nothing but the DOM, so they can be driven
+in a plain page without installing the extension at all. The suite builds a
+fixture that deliberately fights the restore: **1600px of content lazy-loads in
+above the anchor after restore has already started**, so a pixel-offset restore
+lands in the wrong place by design and only the anchor plus settle passes get it
+right.
+
+`test/roundtrip.test.mjs` — freeze a page with a scrolled article, a scrolled
+sidebar, five form fields, a seeked audio element and a highlight spanning an
+inline tag; reload; restore; assert every one of them came back, that the
+password did not, and that the media did not auto-play.
+
+`test/edge-cases.test.mjs` — the failure modes:
+
+- a **textless banner** filling the top of the viewport, which used to produce a
+  null anchor and a silent downgrade to pixel restore
+- the **anchor element deleted** between freeze and restore, so its structural
+  path now resolves to a *different* paragraph — the text guard has to reject
+  the impostor rather than confidently scrolling to the wrong place
+- the **user taking over** mid-restore, which must abort it promptly
+
+Set `CF_CHROME` to an existing Chromium binary to skip Playwright's download.
+
+---
+
 ## Roadmap
 
 - [ ] Auto-freeze on window close, so you never lose a session you forgot to save
