@@ -1,4 +1,10 @@
-import type { Freeze, PageContext, RestoreReport } from "./types";
+import type {
+  Checkpoint,
+  CheckpointKind,
+  Freeze,
+  PageContext,
+  RestoreReport,
+} from "./types";
 
 /** popup -> background */
 export interface FreezeWindowMsg { type: "CF_FREEZE_WINDOW"; windowId: number }
@@ -14,6 +20,22 @@ export interface RestoreReportMsg { type: "CF_RESTORE_REPORT"; report: RestoreRe
 /** popup -> background */
 export interface LastReportsMsg { type: "CF_LAST_REPORTS" }
 
+/** popup -> background, checkpoints */
+export interface AddCheckpointMsg { type: "CF_ADD_CHECKPOINT"; tabId: number; kind: CheckpointKind }
+export interface ListCheckpointsMsg { type: "CF_LIST_CHECKPOINTS"; url: string }
+export interface JumpCheckpointMsg { type: "CF_JUMP_CHECKPOINT"; tabId: number; id: string }
+export interface DeleteCheckpointMsg { type: "CF_DELETE_CHECKPOINT"; id: string }
+export interface RenameCheckpointMsg { type: "CF_RENAME_CHECKPOINT"; id: string; label: string }
+
+/** content -> background */
+export interface AutosaveMsg { type: "CF_AUTOSAVE"; draft: CheckpointDraft }
+
+/** background -> content */
+export interface DropMsg { type: "CF_DROP"; kind: CheckpointKind }
+export interface JumpMsg { type: "CF_JUMP"; checkpoint: Checkpoint }
+
+export type CheckpointDraft = Omit<Checkpoint, "id" | "key">;
+
 /** background -> content */
 export interface CaptureMsg { type: "CF_CAPTURE" }
 export interface RestoreMsg { type: "CF_RESTORE"; context: PageContext }
@@ -28,7 +50,15 @@ export type Message =
   | RestoreReportMsg
   | LastReportsMsg
   | CaptureMsg
-  | RestoreMsg;
+  | RestoreMsg
+  | AddCheckpointMsg
+  | ListCheckpointsMsg
+  | JumpCheckpointMsg
+  | DeleteCheckpointMsg
+  | RenameCheckpointMsg
+  | AutosaveMsg
+  | DropMsg
+  | JumpMsg;
 
 export type CaptureResponse =
   | { ok: true; context: PageContext }
@@ -47,3 +77,7 @@ export type RestoreResponse =
   | { ok: false; error: string };
 
 export type LastReportsResponse = { reports: RestoreReport[] };
+
+export type DropResponse = { ok: true; draft: CheckpointDraft } | { ok: false; error: string };
+export type CheckpointListResponse = { checkpoints: Checkpoint[] };
+export type SimpleResponse = { ok: true } | { ok: false; error: string };

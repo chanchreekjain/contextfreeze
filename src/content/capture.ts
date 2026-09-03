@@ -91,21 +91,70 @@ function findAnchor(
   return null;
 }
 
+/**
+ * The document scroller's anchor, with no minimum-scroll threshold.
+ *
+ * A freeze skips a page that has barely been scrolled - there is nothing worth
+ * restoring. A checkpoint must not: dropping one near the top of an article is
+ * a deliberate act, and "you were at the top" is the answer the user asked for.
+ */
+export function describeDocumentScroll(): ScrollAnchor {
+  const found = findAnchor(window.innerWidth / 2, 0, window.innerHeight, null);
+  return {
+    container: null,
+    scrollTop: window.scrollY || document.documentElement.scrollTop || 0,
+    scrollLeft: window.scrollX || document.documentElement.scrollLeft || 0,
+    anchor: found ? describe(found.el) : null,
+    anchorText: found ? textOf(found.el) : null,
+    anchorOffset: found ? found.offset : 0,
+  };
+}
+
+/**
+ * The one media element a person would call "the video on this page": the
+ * biggest one that has actually loaded something.
+ *
+ * Note what is NOT required: a finite duration. Live streams and any
+ * chunked-transfer source report Infinity, and flagging a moment in those is
+ * perfectly meaningful.
+ */
+export function primaryMedia(): { el: HTMLMediaElement; state: MediaState } | null {
+  const counts = { video: 0, audio: 0 };
+  let best: { el: HTMLMediaElement; state: MediaState; area: number } | null = null;
+
+  for (const el of document.querySelectorAll<HTMLMediaElement>("video, audio")) {
+    const tag = el.tagName.toLowerCase() === "audio" ? "audio" : "video";
+    const index = counts[tag]++;
+    if (el.readyState < 1 && !el.currentSrc && !el.src) continue;
+
+    const rect = el.getBoundingClientRect();
+    const area = Math.max(rect.width * rect.height, tag === "audio" ? 1 : 0);
+    if (best && area <= best.area) continue;
+
+    best = {
+      el,
+      area,
+      state: {
+        ref: describe(el),
+        tag,
+        index,
+        currentTime: el.currentTime,
+        playbackRate: el.playbackRate,
+        wasPaused: el.paused,
+        duration: Number.isFinite(el.duration) ? el.duration : null,
+      },
+    };
+  }
+  return best ? { el: best.el, state: best.state } : null;
+}
+
 export function captureScrolls(): ScrollAnchor[] {
   const out: ScrollAnchor[] = [];
 
   const docTop = window.scrollY || document.documentElement.scrollTop || 0;
   const docLeft = window.scrollX || document.documentElement.scrollLeft || 0;
   if (docTop > MIN_SCROLL_PX || docLeft > MIN_SCROLL_PX) {
-    const found = findAnchor(window.innerWidth / 2, 0, window.innerHeight, null);
-    out.push({
-      container: null,
-      scrollTop: docTop,
-      scrollLeft: docLeft,
-      anchor: found ? describe(found.el) : null,
-      anchorText: found ? textOf(found.el) : null,
-      anchorOffset: found ? found.offset : 0,
-    });
+    out.push(describeDocumentScroll());
   }
 
   // Nested scrollers - docs sidebars, chat panes, code viewers. This is the bit

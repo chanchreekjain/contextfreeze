@@ -1,5 +1,6 @@
 import type { CaptureResponse, ContentReadyResponse, Message } from "../messages";
 import { capturePage, installSelectionTracker } from "./capture";
+import { dropCheckpoint, jumpTo } from "./checkpoint";
 import { restorePage } from "./restore";
 
 declare global {
@@ -51,6 +52,22 @@ if (!window.__contextFreezeLoaded && window.top === window) {
       return true;
     }
 
+    if (message.type === "CF_DROP") {
+      const draft = dropCheckpoint(message.kind);
+      sendResponse(
+        draft
+          ? { ok: true, draft }
+          : { ok: false, error: "Nothing to mark here - no video or audio on this page." },
+      );
+      return true;
+    }
+
+    if (message.type === "CF_JUMP") {
+      void jumpTo(message.checkpoint);
+      sendResponse({ ok: true });
+      return true;
+    }
+
     if (message.type === "CF_RESTORE") {
       void runRestore(message.context);
       sendResponse({ ok: true });
@@ -87,4 +104,27 @@ if (!window.__contextFreezeLoaded && window.top === window) {
   }
 
   void handshake();
+
+  /**
+   * Keep the "Last position" entry current for pages the user has chosen to
+   * follow. The background decides whether this page qualifies - the content
+   * script does not get to quietly record every page you visit.
+   *
+   * Fired when the tab is hidden or unloaded, which is when you have in fact
+   * left off, and throttled so tab-flicking does not spam storage.
+   */
+  let lastAutosave = 0;
+  const AUTOSAVE_MIN_INTERVAL_MS = 5_000;
+
+  function autosave(): void {
+    if (Date.now() - lastAutosave < AUTOSAVE_MIN_INTERVAL_MS) return;
+    lastAutosave = Date.now();
+    const draft = dropCheckpoint("position", true);
+    if (draft) void chrome.runtime.sendMessage({ type: "CF_AUTOSAVE", draft }).catch(() => {});
+  }
+
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "hidden") autosave();
+  });
+  window.addEventListener("pagehide", autosave);
 }

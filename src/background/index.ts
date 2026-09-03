@@ -1,8 +1,11 @@
 import type {
+  CheckpointDraft,
+  DropResponse,
   FreezeResponse,
   ListResponse,
   Message,
   RestoreResponse,
+  SimpleResponse,
 } from "../messages";
 import {
   getFreeze,
@@ -13,9 +16,19 @@ import {
   saveFreeze,
   setPending,
 } from "../storage";
+import {
+  allCheckpoints,
+  checkpointsForPage,
+  pageIsTracked,
+  pageKey,
+  removeCheckpoint,
+  renameCheckpoint,
+  saveCheckpoint,
+} from "../checkpoints";
 import { resumeUrl } from "../site-adapters";
-import type { Freeze, FrozenTab, RestoreReport } from "../types";
+import type { Checkpoint, CheckpointKind, Freeze, FrozenTab, RestoreReport } from "../types";
 
+const JUMPS_KEY = "cf_pending_jumps";
 const REPORTS_KEY = "cf_reports";
 const MAX_REPORTS = 20;
 
@@ -25,6 +38,17 @@ async function recordReport(report: RestoreReport): Promise<void> {
   await chrome.storage.session.set({
     [REPORTS_KEY]: [report, ...previous].slice(0, MAX_REPORTS),
   });
+}
+
+type PendingJumps = Record<string, Checkpoint>;
+
+async function getJumps(): Promise<PendingJumps> {
+  const data = await chrome.storage.session.get(JUMPS_KEY);
+  return (data[JUMPS_KEY] as PendingJumps | undefined) ?? {};
+}
+
+async function setJumps(map: PendingJumps): Promise<void> {
+  await chrome.storage.session.set({ [JUMPS_KEY]: map });
 }
 
 /** Only ordinary web pages can host a content script. */
@@ -176,6 +200,47 @@ async function restoreFreeze(id: string): Promise<RestoreResponse> {
   return { ok: true, opened: openable.length, skipped };
 }
 
+async function addCheckpoint(tabId: number, kind: CheckpointKind): Promise<SimpleResponse> {
+  let draft: CheckpointDraft;
+  try {
+    const response: DropResponse = await chrome.tabs.sendMessage(tabId, { type: "CF_DROP", kind });
+    if (!response.ok) return response;
+    draft = response.draft;
+  } catch {
+    return { ok: false, error: "Reload this page, then try again." };
+  }
+
+  await saveCheckpoint({ ...draft, id: crypto.randomUUID(), key: pageKey(draft.url) });
+  return { ok: true };
+}
+
+/**
+ * Jumping within the page you are already on should not reload it - that would
+ * throw away everything else on screen. Only navigate when the tab has actually
+ * moved somewhere else, and then hand the checkpoint over the same way a
+ * restore does, via the content script's handshake.
+ */
+async function jumpToCheckpoint(tabId: number, id: string): Promise<SimpleResponse> {
+  const tab = await chrome.tabs.get(tabId);
+  const checkpoint = (await allCheckpoints()).find((c) => c.id === id);
+  if (!checkpoint) return { ok: false, error: "That checkpoint no longer exists." };
+
+  if (tab.url && pageKey(tab.url) === checkpoint.key) {
+    try {
+      await chrome.tabs.sendMessage(tabId, { type: "CF_JUMP", checkpoint });
+      return { ok: true };
+    } catch {
+      return { ok: false, error: "Reload this page, then try again." };
+    }
+  }
+
+  const jumps = await getJumps();
+  jumps[String(tabId)] = checkpoint;
+  await setJumps(jumps);
+  await chrome.tabs.update(tabId, { url: checkpoint.url });
+  return { ok: true };
+}
+
 async function flashBadge(text: string): Promise<void> {
   await chrome.action.setBadgeText({ text });
   await chrome.action.setBadgeBackgroundColor({ color: "#1d63d1" });
@@ -188,6 +253,15 @@ chrome.runtime.onMessage.addListener((message: Message, sender, sendResponse) =>
       case "CF_CONTENT_READY": {
         const tabId = sender.tab?.id;
         if (tabId == null) return sendResponse({});
+
+        const jumps = await getJumps();
+        const jump = jumps[String(tabId)];
+        if (jump) {
+          delete jumps[String(tabId)];
+          await setJumps(jumps);
+          void chrome.tabs.sendMessage(tabId, { type: "CF_JUMP", checkpoint: jump }).catch(() => {});
+        }
+
         const pending = await getPending();
         const key = String(tabId);
         const entry = pending[key];
@@ -202,6 +276,30 @@ chrome.runtime.onMessage.addListener((message: Message, sender, sendResponse) =>
       case "CF_LAST_REPORTS": {
         const data = await chrome.storage.session.get(REPORTS_KEY);
         return sendResponse({ reports: (data[REPORTS_KEY] as RestoreReport[] | undefined) ?? [] });
+      }
+      case "CF_ADD_CHECKPOINT":
+        return sendResponse(await addCheckpoint(message.tabId, message.kind));
+      case "CF_LIST_CHECKPOINTS":
+        return sendResponse({ checkpoints: await checkpointsForPage(message.url) });
+      case "CF_JUMP_CHECKPOINT":
+        return sendResponse(await jumpToCheckpoint(message.tabId, message.id));
+      case "CF_DELETE_CHECKPOINT":
+        await removeCheckpoint(message.id);
+        return sendResponse({ ok: true });
+      case "CF_RENAME_CHECKPOINT":
+        await renameCheckpoint(message.id, message.label);
+        return sendResponse({ ok: true });
+      case "CF_AUTOSAVE": {
+        // Only pages the user has explicitly marked get a running "Last
+        // position". Otherwise this would quietly become a browsing history.
+        if (await pageIsTracked(message.draft.url)) {
+          await saveCheckpoint({
+            ...message.draft,
+            id: crypto.randomUUID(),
+            key: pageKey(message.draft.url),
+          });
+        }
+        return sendResponse({ ok: true });
       }
       case "CF_FREEZE_WINDOW":
         return sendResponse(await freezeWindow(message.windowId));
@@ -223,12 +321,21 @@ chrome.runtime.onMessage.addListener((message: Message, sender, sendResponse) =>
 });
 
 chrome.commands.onCommand.addListener((command) => {
-  if (command !== "freeze-window") return;
   void (async () => {
-    const win = await chrome.windows.getLastFocused();
-    if (win.id == null) return;
-    const result = await freezeWindow(win.id);
-    await flashBadge(result.ok ? String(result.freeze.tabs.length) : "!");
+    if (command === "freeze-window") {
+      const win = await chrome.windows.getLastFocused();
+      if (win.id == null) return;
+      const result = await freezeWindow(win.id);
+      await flashBadge(result.ok ? String(result.freeze.tabs.length) : "!");
+      return;
+    }
+
+    if (command === "drop-checkpoint" || command === "drop-flag") {
+      const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+      if (tab?.id == null) return;
+      const result = await addCheckpoint(tab.id, command === "drop-flag" ? "media" : "position");
+      await flashBadge(result.ok ? "+" : "!");
+    }
   })();
 });
 

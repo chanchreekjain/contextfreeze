@@ -119,3 +119,32 @@ export interface RestoreReport {
   aborted: boolean;
   elapsedMs: number;
 }
+
+/* ------------------------------------------------------------- checkpoints */
+
+/**
+ * A checkpoint is a single named place inside one page, rather than a whole
+ * window's worth of state. Two flavours:
+ *
+ *   position - somewhere in an article, recorded the same way a freeze records
+ *              scroll: an anchor element plus an offset, never a raw pixel.
+ *   media    - a flag at a moment in a video or podcast.
+ *
+ * `auto` marks the self-updating "Last position" entry a page keeps once you
+ * have dropped at least one checkpoint on it. It is overwritten, never stacked.
+ */
+export type CheckpointKind = "position" | "media";
+
+export interface Checkpoint {
+  id: string;
+  /** Normalised page key - see pageKey(). Flags on one video share a key. */
+  key: string;
+  url: string;
+  title: string;
+  label: string;
+  kind: CheckpointKind;
+  auto: boolean;
+  createdAt: number;
+  scroll?: ScrollAnchor;
+  media?: MediaState;
+}

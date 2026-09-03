@@ -72,6 +72,43 @@ you highlight something of your own.
 
 ---
 
+## Checkpoints
+
+A freeze captures a whole window. A **checkpoint** captures one named place
+*inside* one page — and unlike a freeze, you can see it working.
+
+- **Mark this spot** (`Ctrl+Shift+S`) drops a checkpoint where you are in an
+  article, labelled with the text you were looking at, so the list reads like
+  *"...the quick brown fox jumps over..."* rather than *"14,203px"*.
+- **Flag this moment** (`Ctrl+Shift+Y`) drops a flag at the current second of a
+  video or podcast, labelled `12:05`.
+- Many per page. Click **Jump** in the popup to go straight there.
+- Jumping inside the page you are already on does **not** reload it. Only a tab
+  that has navigated elsewhere gets navigated back, and the checkpoint is handed
+  over through the same handshake a restore uses.
+- A flag jumps to the **exact** second you marked. (The 3-second rewind applies
+  to resuming a freeze, not to a mark you placed deliberately.)
+
+### "Remember where I left off"
+
+Once a page has at least one checkpoint of yours, it also keeps a self-updating
+**Last position** entry, refreshed whenever you switch away from or close the
+tab.
+
+This is deliberately opt-in per page. Recording the scroll position of every
+page you ever open would put a browsing history in extension storage, and that
+is not a thing to switch on quietly. Mark one spot on an article and it starts
+following it; do nothing and it records nothing.
+
+### What counts as "the same page"
+
+Flags on one video have to share a page, or jumping to one flag would hide all
+the others. So `pageKey()` normalises: every YouTube URL for a video — `?t=`
+variants and `youtu.be` short links included — keys to `youtube:<id>`, and
+elsewhere tracking parameters and hashes are stripped.
+
+---
+
 ## Where it actually earns its keep
 
 Worth being honest about: on some sites you will not notice it, because the site
@@ -148,14 +185,17 @@ once from Windows before `npm run build` there.
 ```
 src/
 ├── types.ts               the context layer, documented field by field
+├── checkpoints.ts         checkpoint storage and page keying
 ├── messages.ts            typed popup <-> worker <-> content protocol
 ├── storage.ts             freeze CRUD + the pending-restore handoff
+├── site-adapters.ts       per-site resume URLs (YouTube's ?t=)
 ├── background/index.ts    orchestration: freeze a window, reopen a freeze
 ├── content/
 │   ├── index.ts           message handling + the restore handshake
 │   ├── element-path.ts    find-this-element-again strategies
 │   ├── capture.ts         reading the context layer off a live page
 │   ├── restore.ts         the retry loop (the hard part)
+│   ├── checkpoint.ts      dropping and jumping to a single marked place
 │   └── text-range.ts      re-finding a highlight across text nodes
 └── popup/index.ts         the UI
 ```
@@ -187,6 +227,10 @@ password did not, and that the media did not auto-play.
 id that re-parents itself after load *and* resets its playhead to zero twice
 while initialising. Plus the URL rewrite, exercised directly.
 
+`test/checkpoints.test.mjs` — marking a spot and jumping back to it, flagging a
+moment and landing on the exact second, and the page-keying rules that keep a
+video's flags together.
+
 `test/edge-cases.test.mjs` — the other failure modes:
 
 - a **textless banner** filling the top of the viewport, which used to produce a
@@ -203,6 +247,7 @@ Set `CF_CHROME` to an existing Chromium binary to skip Playwright's download.
 ## Roadmap
 
 - [ ] Auto-freeze on window close, so you never lose a session you forgot to save
+- [ ] Checkpoint markers drawn in the scrollbar and on the video timeline
 - [ ] `all_frames` capture for embedded players
 - [ ] Site adapters beyond YouTube (Vimeo, Coursera, podcast players)
 - [ ] Report what ContextFreeze actually added over Chrome's own restore

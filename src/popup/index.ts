@@ -1,16 +1,27 @@
 import type {
+  CheckpointListResponse,
   FreezeResponse,
   LastReportsResponse,
   ListResponse,
   RestoreResponse,
+  SimpleResponse,
 } from "../messages";
-import type { Freeze, RestoreReport } from "../types";
+import type { Checkpoint, CheckpointKind, Freeze, RestoreReport } from "../types";
 
 const freezeButton = document.getElementById("freeze") as HTMLButtonElement;
 const statusEl = document.getElementById("status") as HTMLParagraphElement;
 const listEl = document.getElementById("list") as HTMLUListElement;
 const emptyEl = document.getElementById("empty") as HTMLParagraphElement;
 const rowTemplate = document.getElementById("row-template") as HTMLTemplateElement;
+const hereSection = document.getElementById("here") as HTMLElement;
+const markSpotButton = document.getElementById("mark-spot") as HTMLButtonElement;
+const markMomentButton = document.getElementById("mark-moment") as HTMLButtonElement;
+const checkpointList = document.getElementById("checkpoints") as HTMLUListElement;
+const noCheckpoints = document.getElementById("no-checkpoints") as HTMLParagraphElement;
+const checkpointTemplate = document.getElementById("checkpoint-template") as HTMLTemplateElement;
+
+/** The tab the popup was opened over. Every checkpoint action is relative to it. */
+let currentTab: chrome.tabs.Tab | null = null;
 
 function setStatus(text: string): void {
   statusEl.textContent = text;
@@ -113,6 +124,101 @@ async function showLastReport(): Promise<void> {
   }
 }
 
+function describeCheckpoint(checkpoint: Checkpoint): string {
+  if (checkpoint.kind === "media") {
+    const total = checkpoint.media?.duration;
+    return total ? `video · of ${formatClock(total)}` : "video";
+  }
+  const when = new Date(checkpoint.createdAt).toLocaleString(undefined, {
+    day: "numeric", month: "short", hour: "numeric", minute: "2-digit",
+  });
+  return checkpoint.auto ? `updates as you read · ${when}` : when;
+}
+
+function formatClock(seconds: number): string {
+  const total = Math.max(0, Math.floor(seconds));
+  const h = Math.floor(total / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return h ? `${h}:${pad(m)}:${pad(total % 60)}` : `${m}:${pad(total % 60)}`;
+}
+
+function renderCheckpoint(checkpoint: Checkpoint): HTMLLIElement {
+  const fragment = checkpointTemplate.content.cloneNode(true) as DocumentFragment;
+  const row = fragment.querySelector(".checkpoint") as HTMLLIElement;
+  const badge = row.querySelector(".badge") as HTMLElement;
+  const name = row.querySelector(".name") as HTMLButtonElement;
+  const meta = row.querySelector(".meta") as HTMLParagraphElement;
+  const jump = row.querySelector(".jump") as HTMLButtonElement;
+  const remove = row.querySelector(".delete") as HTMLButtonElement;
+
+  if (checkpoint.auto) row.classList.add("is-auto");
+  badge.textContent = checkpoint.kind === "media" ? "▶" : checkpoint.auto ? "◆" : "◇";
+  name.textContent = checkpoint.label;
+  name.title = checkpoint.label;
+  meta.textContent = describeCheckpoint(checkpoint);
+
+  name.addEventListener("click", async () => {
+    const next = window.prompt("Rename this checkpoint", checkpoint.label);
+    if (next === null) return;
+    const trimmed = next.trim();
+    if (!trimmed || trimmed === checkpoint.label) return;
+    await chrome.runtime.sendMessage({
+      type: "CF_RENAME_CHECKPOINT", id: checkpoint.id, label: trimmed,
+    });
+    await refreshCheckpoints();
+  });
+
+  jump.addEventListener("click", async () => {
+    if (currentTab?.id == null) return;
+    jump.disabled = true;
+    const result: SimpleResponse = await chrome.runtime.sendMessage({
+      type: "CF_JUMP_CHECKPOINT", tabId: currentTab.id, id: checkpoint.id,
+    });
+    if (!result.ok) {
+      setStatus(result.error);
+      jump.disabled = false;
+      return;
+    }
+    window.close();
+  });
+
+  remove.addEventListener("click", async () => {
+    await chrome.runtime.sendMessage({ type: "CF_DELETE_CHECKPOINT", id: checkpoint.id });
+    await refreshCheckpoints();
+  });
+
+  return row;
+}
+
+async function refreshCheckpoints(): Promise<void> {
+  if (!currentTab?.url || !/^https?:/.test(currentTab.url)) {
+    hereSection.hidden = true;
+    return;
+  }
+  hereSection.hidden = false;
+
+  const { checkpoints }: CheckpointListResponse = await chrome.runtime.sendMessage({
+    type: "CF_LIST_CHECKPOINTS", url: currentTab.url,
+  });
+  checkpointList.replaceChildren(...checkpoints.map(renderCheckpoint));
+  noCheckpoints.hidden = checkpoints.length > 0;
+}
+
+async function mark(kind: CheckpointKind, button: HTMLButtonElement): Promise<void> {
+  if (currentTab?.id == null) return;
+  button.disabled = true;
+  const result: SimpleResponse = await chrome.runtime.sendMessage({
+    type: "CF_ADD_CHECKPOINT", tabId: currentTab.id, kind,
+  });
+  setStatus(result.ok ? "" : result.error);
+  button.disabled = false;
+  await refreshCheckpoints();
+}
+
+markSpotButton.addEventListener("click", () => void mark("position", markSpotButton));
+markMomentButton.addEventListener("click", () => void mark("media", markMomentButton));
+
 async function refresh(): Promise<void> {
   const { freezes }: ListResponse = await chrome.runtime.sendMessage({ type: "CF_LIST_FREEZES" });
   listEl.replaceChildren(...freezes.map(renderRow));
@@ -150,5 +256,10 @@ freezeButton.addEventListener("click", async () => {
   await refresh();
 });
 
-void refresh();
-void showLastReport();
+void (async () => {
+  const [activeTab] = await chrome.tabs.query({ active: true, currentWindow: true });
+  currentTab = activeTab ?? null;
+  await refreshCheckpoints();
+  await refresh();
+  await showLastReport();
+})();

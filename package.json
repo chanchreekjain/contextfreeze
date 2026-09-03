@@ -9,7 +9,7 @@
     "watch": "node build.mjs --watch",
     "typecheck": "tsc --noEmit",
     "fixtures": "node test/make-fixture.mjs",
-    "test": "npm run fixtures && node test/roundtrip.test.mjs && node test/media.test.mjs && node test/editor-selection.test.mjs && node test/edge-cases.test.mjs"
+    "test": "npm run fixtures && node test/roundtrip.test.mjs && node test/media.test.mjs && node test/editor-selection.test.mjs && node test/checkpoints.test.mjs && node test/edge-cases.test.mjs"
   },
   "devDependencies": {
     "@types/chrome": "^0.0.287",

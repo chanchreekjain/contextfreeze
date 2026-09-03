@@ -123,7 +123,7 @@ const guarded = new WeakSet<HTMLMediaElement>();
  * time routinely resolves to nothing. Try the recorded ref, then "the only
  * <video> on the page", then the ordinal.
  */
-function resolveMedia(state: MediaState): HTMLMediaElement | null {
+export function resolveMedia(state: MediaState): HTMLMediaElement | null {
   const byRef = resolve(state.ref);
   if (byRef instanceof HTMLMediaElement) return byRef;
 
@@ -132,14 +132,19 @@ function resolveMedia(state: MediaState): HTMLMediaElement | null {
   return sameTag[state.index] ?? null;
 }
 
-function targetTime(state: MediaState): number {
-  return Math.max(0, state.currentTime - RESUME_REWIND_SECONDS);
+function targetTime(state: MediaState, rewind: number): number {
+  return Math.max(0, state.currentTime - rewind);
 }
 
-function seek(el: HTMLMediaElement, state: MediaState): void {
+/**
+ * `rewind` defaults to the resume rewind, because picking a video back up
+ * mid-sentence is jarring. Jumping to a flag you placed deliberately passes 0 -
+ * you marked that moment, not three seconds before it.
+ */
+export function seek(el: HTMLMediaElement, state: MediaState, rewind = RESUME_REWIND_SECONDS): void {
   try {
     const limit = Number.isFinite(el.duration) ? el.duration - 0.25 : Infinity;
-    el.currentTime = Math.max(0, Math.min(targetTime(state), limit));
+    el.currentTime = Math.max(0, Math.min(targetTime(state, rewind), limit));
     el.playbackRate = state.playbackRate;
     // Never auto-play. Coming back to a frozen window should not start audio.
   } catch {
@@ -157,7 +162,7 @@ function guardSeek(el: HTMLMediaElement, state: MediaState, isAborted: () => boo
   if (guarded.has(el)) return;
   guarded.add(el);
 
-  const wanted = targetTime(state);
+  const wanted = targetTime(state, RESUME_REWIND_SECONDS);
   const floor = Math.max(1, wanted - MEDIA_DRIFT_TOLERANCE_S);
   const deadline = Date.now() + MEDIA_GUARD_MS;
   let corrections = 0;
@@ -241,7 +246,7 @@ function anchorDrift(anchor: ScrollAnchor, scroller: Element | Window): number |
   return top - containerTop - anchor.anchorOffset;
 }
 
-function applyScroll(anchor: ScrollAnchor, allowPixelFallback: boolean): boolean {
+export function applyScroll(anchor: ScrollAnchor, allowPixelFallback: boolean): boolean {
   const scroller = scrollerFor(anchor);
   if (!scroller) return false;
 

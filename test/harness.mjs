@@ -14,8 +14,34 @@ export async function serve(port) {
     const rel = (req.url || "/").split("?")[0].replace(/^\/+/, "") || "page.html";
     const path = join(FIXTURES, rel);
     if (!existsSync(path)) { res.writeHead(404); res.end("not found"); return; }
-    res.writeHead(200, { "content-type": TYPES[extname(path)] || "application/octet-stream" });
-    res.end(readFileSync(path));
+
+    const body = readFileSync(path);
+    const type = TYPES[extname(path)] || "application/octet-stream";
+
+    // Content-Length and Range matter here: without them Node falls back to
+    // chunked encoding, Chromium cannot know the media's length, and duration
+    // comes back as Infinity - which is not how any real media server behaves.
+    const range = /^bytes=(\d*)-(\d*)$/.exec(req.headers.range || "");
+    if (range) {
+      const start = range[1] ? Number(range[1]) : 0;
+      const end = range[2] ? Number(range[2]) : body.length - 1;
+      const slice = body.subarray(start, end + 1);
+      res.writeHead(206, {
+        "content-type": type,
+        "content-length": slice.length,
+        "accept-ranges": "bytes",
+        "content-range": `bytes ${start}-${end}/${body.length}`,
+      });
+      res.end(slice);
+      return;
+    }
+
+    res.writeHead(200, {
+      "content-type": type,
+      "content-length": body.length,
+      "accept-ranges": "bytes",
+    });
+    res.end(body);
   });
   await new Promise((r) => server.listen(port, r));
   return { url: `http://127.0.0.1:${port}/page.html`, close: () => server.close() };

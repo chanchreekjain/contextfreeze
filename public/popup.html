@@ -16,13 +16,39 @@
     </header>
 
     <main>
-      <h2 class="section">Saved</h2>
+      <section id="here" hidden>
+        <h2 class="section">This page</h2>
+        <div class="mark-row">
+          <button id="mark-spot" class="ghost" type="button">Mark this spot</button>
+          <button id="mark-moment" class="ghost" type="button">Flag this moment</button>
+        </div>
+        <ul id="checkpoints" class="list"></ul>
+        <p id="no-checkpoints" class="empty">
+          Mark a spot and this page will also start remembering where you left off.
+        </p>
+      </section>
+
+      <h2 class="section">Saved windows</h2>
       <ul id="list" class="list"></ul>
       <p id="empty" class="empty" hidden>
         Nothing frozen yet. Hit the button above and ContextFreeze will remember
         where you were in every tab of this window.
       </p>
     </main>
+
+    <template id="checkpoint-template">
+      <li class="row checkpoint">
+        <span class="badge" aria-hidden="true"></span>
+        <div class="row-main">
+          <button class="name" type="button" title="Click to rename"></button>
+          <p class="meta"></p>
+        </div>
+        <div class="row-actions">
+          <button class="jump" type="button">Jump</button>
+          <button class="delete" type="button" aria-label="Delete">&times;</button>
+        </div>
+      </li>
+    </template>
 
     <template id="row-template">
       <li class="row">
