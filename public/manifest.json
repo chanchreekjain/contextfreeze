@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "ContextFreeze",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "description": "Save and restore your deep-work browser context - scroll position, form contents and video timestamps, not just URLs.",
   "permissions": [
     "tabs",

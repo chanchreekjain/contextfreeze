@@ -1,20 +1,22 @@
 {
   "name": "contextfreeze",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "private": true,
-  "description": "Save and restore your deep-work browser context: scroll position, form contents, video timestamps.",
+  "description": "Save and restore your deep-work browser context - scroll position, form contents, video timestamps and highlights, not just URLs.",
   "type": "module",
   "scripts": {
     "build": "node build.mjs",
     "watch": "node build.mjs --watch",
     "typecheck": "tsc --noEmit",
     "fixtures": "node test/make-fixture.mjs",
-    "test": "npm run fixtures && node test/export.test.mjs && node test/roundtrip.test.mjs && node test/media.test.mjs && node test/editor-selection.test.mjs && node test/shadow-dom.test.mjs && node test/visibility.test.mjs && node test/diagnose.test.mjs && node test/checkpoints.test.mjs && node test/namer.test.mjs && node test/edge-cases.test.mjs"
+    "test": "npm run fixtures && node test/export.test.mjs && node test/roundtrip.test.mjs && node test/media.test.mjs && node test/editor-selection.test.mjs && node test/shadow-dom.test.mjs && node test/visibility.test.mjs && node test/diagnose.test.mjs && node test/checkpoints.test.mjs && node test/namer.test.mjs && node test/edge-cases.test.mjs",
+    "package": "npm run build && node tools/package.mjs"
   },
   "devDependencies": {
     "@types/chrome": "^0.0.287",
     "esbuild": "^0.24.0",
     "playwright": "^1.49.0",
     "typescript": "^5.6.3"
-  }
+  },
+  "license": "MIT"
 }

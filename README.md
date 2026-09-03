@@ -235,15 +235,21 @@ Everything stays on your machine. There is no server, no sync, no telemetry.
 
 ---
 
-## Install (unpacked)
+## Install
+
+**From a release zip** — download it, unzip it, then in Chrome:
+`chrome://extensions` → enable **Developer mode** → **Load unpacked** → select
+the unzipped folder.
+
+**From source:**
 
 ```bash
 npm install
 npm run build
 ```
 
-Then in Chrome: `chrome://extensions` → enable **Developer mode** → **Load
-unpacked** → select the `dist/` folder.
+Then load `dist/` the same way. `npm run package` produces
+`release/contextfreeze-<version>.zip`, ready to hand to someone or upload.
 
 `Ctrl+Shift+F` freezes the current window without opening the popup.
 
@@ -344,6 +350,20 @@ Set `CF_CHROME` to an existing Chromium binary to skip Playwright's download.
 
 ---
 
+## Permissions, and why each one
+
+| Permission | What it is for |
+|---|---|
+| `tabs` | reading each tab's URL and title when freezing a window |
+| `tabGroups` | recording a group's name and colour, and putting it back |
+| `storage` | freezes and checkpoints, on your machine only |
+| `scripting` | injecting the content script once into tabs that were already open when you installed it |
+| `downloads` | the `.md` and `.json` exports |
+| `<all_urls>` | a bookmark is only useful if it works on the page you are actually reading |
+
+There is no server, no sync and no telemetry. Nothing leaves your machine unless
+you export it yourself.
+
 ## Roadmap
 
 - [ ] Auto-freeze on window close, so you never lose a session you forgot to save
@@ -354,6 +374,9 @@ Set `CF_CHROME` to an existing Chromium binary to skip Playwright's download.
 - [ ] Restore into the current window instead of always opening a new one
 - [ ] Export/import a freeze as JSON
 - [ ] Fuzzy anchor matching, so a lightly-edited page still restores
+- [ ] Site adapters for editors that are collapsed until clicked (Reddit's
+      composer is the known case — its draft is captured, but there is nothing
+      on the page to write it back into until you open it)
 
 ## The icon
 

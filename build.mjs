@@ -1,5 +1,14 @@
 import * as esbuild from "esbuild";
-import { cpSync, mkdirSync, rmSync } from "node:fs";
+import { cpSync, mkdirSync, readFileSync, rmSync } from "node:fs";
+
+const pkg = JSON.parse(readFileSync("package.json", "utf8"));
+const manifest = JSON.parse(readFileSync("public/manifest.json", "utf8"));
+if (pkg.version !== manifest.version) {
+  console.error(
+    `version mismatch: package.json is ${pkg.version}, manifest is ${manifest.version}`,
+  );
+  process.exit(1);
+}
 
 const watch = process.argv.includes("--watch");
 const dev = watch || process.argv.includes("--dev");
