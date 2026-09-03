@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ContextFreeze — Privacy Policy</title>
+<style>
+  :root {
+    --bg: #ffffff; --text: #14171a; --muted: #5b6472;
+    --border: #e3e6ea; --accent: #2b2fd6;
+    color-scheme: light dark;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #16181c; --text: #e8eaed; --muted: #9aa0a6; --border: #2c3037; --accent: #6ea8fe; }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 48px 20px 96px; background: var(--bg); color: var(--text);
+    font: 16px/1.65 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  main { max-width: 660px; margin: 0 auto; }
+  .brand { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; }
+  .mark { width: 26px; height: 26px; border-radius: 7px; }
+  h1 { margin: 0; font-size: 22px; letter-spacing: -0.01em; }
+  .updated { margin: 0 0 32px; color: var(--muted); font-size: 13px; }
+  h2 { margin: 34px 0 8px; font-size: 15px; letter-spacing: 0.02em; text-transform: uppercase; color: var(--muted); }
+  p, ul { margin: 0 0 14px; }
+  ul { padding-left: 22px; }
+  li { margin-bottom: 5px; }
+  a { color: var(--accent); }
+  strong { font-weight: 600; }
+  .lede { font-size: 17px; padding: 16px 18px; border-left: 3px solid var(--accent); background: color-mix(in srgb, var(--accent) 7%, transparent); border-radius: 0 8px 8px 0; }
+  footer { margin-top: 48px; padding-top: 18px; border-top: 1px solid var(--border); color: var(--muted); font-size: 13px; }
+</style>
+</head>
+<body>
+<main>
+  <div class="brand">
+    <svg class="mark" viewBox="0 0 100 100" aria-hidden="true">
+      <defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0" stop-color="#2b2fd6"/><stop offset="1" stop-color="#35b8ff"/>
+      </linearGradient></defs>
+      <rect width="100" height="100" rx="22" fill="url(#g)"/>
+      <path d="M30 21L70 12L70 86L50 65L30 86Z" fill="#fff"/>
+    </svg>
+    <h1>ContextFreeze — Privacy Policy</h1>
+  </div>
+  <p class="updated">Last updated 3 September 2026</p>
+
+  <p class="lede">ContextFreeze has no server. It makes no network requests of any
+  kind. Nothing it reads from your browser ever leaves your computer unless you
+  export it yourself.</p>
+
+  <h2>What it stores</h2>
+  <p>Only when you ask it to — by freezing a window, marking a spot, or flagging a
+  moment — ContextFreeze records, for the pages involved:</p>
+  <ul>
+    <li>the page URL and title</li>
+    <li>how far down the page you were, described as a nearby element and an offset</li>
+    <li>the contents of visible form fields, text boxes and rich-text editors</li>
+    <li>the current timestamp and playback rate of a video or audio element</li>
+    <li>text you had selected</li>
+    <li>tab order, pinned state, and tab group names and colours</li>
+  </ul>
+
+  <h2>What it never stores</h2>
+  <ul>
+    <li><strong>Passwords.</strong> <code>input[type=password]</code> is never read, at any time.</li>
+    <li>Hidden, file, and button inputs.</li>
+    <li>Fields you cannot see — a page's own hidden scratch fields are skipped.</li>
+    <li>Anything on a page you have not explicitly frozen or checkpointed.</li>
+    <li>Your browsing history. A page only starts remembering your position after
+      you deliberately mark it.</li>
+  </ul>
+
+  <h2>Where it is stored</h2>
+  <p>In <code>chrome.storage.local</code>, which lives on your computer inside your
+  browser profile. It is not synced to any account and not transmitted anywhere.</p>
+
+  <h2>What it is used for</h2>
+  <p>Putting you back where you were. That is the only purpose. The data is never
+  sold, never shared, never used for advertising, never used to build a profile
+  of you, and never used for creditworthiness or lending decisions.</p>
+
+  <h2>Sharing</h2>
+  <p>None. There is no analytics, no telemetry, no crash reporting, and no third
+  party of any kind involved. The only way data leaves the extension is when
+  <strong>you</strong> use the export buttons, which write a file to a location
+  you choose on your own computer.</p>
+
+  <h2>Deleting it</h2>
+  <ul>
+    <li>Individual freezes and checkpoints: the × button in the popup.</li>
+    <li>Everything: remove ContextFreeze from <code>chrome://extensions</code>.
+      Uninstalling an extension deletes its local storage.</li>
+  </ul>
+
+  <h2>Contact</h2>
+  <p><a href="https://github.com/chanchreekjain/contextfreeze/issues">github.com/chanchreekjain/contextfreeze/issues</a></p>
+
+  <footer>ContextFreeze is open source under the MIT licence.
+  <a href="https://github.com/chanchreekjain/contextfreeze">View the code</a>.</footer>
+</main>
+</body>
+</html>

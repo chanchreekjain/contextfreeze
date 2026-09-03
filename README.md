@@ -378,13 +378,31 @@ you export it yourself.
       composer is the known case — its draft is captured, but there is nothing
       on the page to write it back into until you open it)
 
+## Publishing
+
+`STORE-LISTING.md` holds every field a store submission asks for — descriptions,
+a single-purpose statement, a written justification for each permission, and the
+data-use disclosures — so a submission is a paste rather than an improvisation.
+
+`npm run store-assets` generates the required artwork into `store/`. Note that
+the **store** icon is inset with transparent padding while the **toolbar** icon
+is full bleed; a store grid gives you room to breathe and a browser toolbar does
+not.
+
+Screenshots have to be real captures, so those are yours to take.
+
+`docs/privacy.html` is the privacy policy, ready to serve from GitHub Pages
+(Settings → Pages → deploy from `main`, folder `/docs`).
+
 ## The icon
 
-`node tools/make-icons.mjs` regenerates every size from a five-point polygon —
-pure Node, no ImageMagick, no headless browser, since a build that needs those
-to make a 16px PNG is a build that breaks on someone else's machine. It writes
-the PNGs by hand: supersampled 4x, premultiplied when downsampling so the
-rounded corners do not fringe, and zlib for the IDAT chunk.
+`npm run icons` regenerates every size from a five-point polygon — pure Node, no
+ImageMagick, no headless browser, since a build that needs those to make a 16px
+PNG is a build that breaks on someone else's machine. `tools/png.mjs` writes the
+PNGs by hand: supersampled, premultiplied when downsampling so the rounded
+corners do not fringe, and zlib for the IDAT chunk. `tools/brand.mjs` holds the
+one definition of the mark, so the logo on a store tile is provably the same
+shape as the one in the toolbar rather than a lookalike that drifted.
 
 The mark is a bookmark with a sheared top. At 16px the silhouette is all that
 survives, so it carries the whole identity: the deep notch says bookmark, the
