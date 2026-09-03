@@ -1,8 +1,12 @@
 /**
  * Fits any PNG onto an exact store screenshot canvas.
  *
- *   node tools/fit-screenshot.mjs shot.png            -> 1280x800
- *   node tools/fit-screenshot.mjs shot.png 640 480    -> any size
+ *   npm run screenshot -- shot.png                 -> 1280x800
+ *   npm run screenshot -- a.png b.png c.png        -> all of them
+ *   npm run screenshot -- shot.png 640 480         -> any size
+ *
+ * Use forward slashes in paths. Git Bash treats a backslash as an escape
+ * character, so C:\Users\CJ\shot.png arrives here as C:UsersCJshot.png.
  *
  * Stores reject screenshots that are not exactly the advertised size, and
  * getting a window to be precisely 1280x800 by dragging its edge is a miserable
@@ -10,7 +14,7 @@
  * the image down if it is too big, centres it, and fills the rest with a colour
  * sampled from the image's own corner so the padding does not look bolted on.
  */
-import { readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { basename, dirname, extname, join } from "node:path";
 import { inflateSync } from "node:zlib";
 import { encodePng } from "./png.mjs";
@@ -125,46 +129,79 @@ function bilinear(image, x, y) {
   return out.map(Math.round);
 }
 
-const [, , input, widthArg, heightArg] = process.argv;
-if (!input) {
-  console.error("usage: node tools/fit-screenshot.mjs <file.png> [width] [height]");
+function fit(input, target) {
+  const image = decodePng(readFileSync(input));
+
+  // Never scale up - enlarging a screenshot just makes it soft and obviously
+  // stretched. Small captures get centred on the canvas instead.
+  const scale = Math.min(target.width / image.width, target.height / image.height, 1);
+  const drawWidth = Math.round(image.width * scale);
+  const drawHeight = Math.round(image.height * scale);
+  const offsetX = Math.round((target.width - drawWidth) / 2);
+  const offsetY = Math.round((target.height - drawHeight) / 2);
+
+  // Backdrop from the image's own top-left pixel, so padding reads as part of
+  // the shot rather than a grey border someone forgot to crop.
+  const backdrop = sample(image, 0, 0);
+
+  const canvas = Buffer.alloc(target.width * target.height * 4);
+  for (let y = 0; y < target.height; y++) {
+    for (let x = 0; x < target.width; x++) {
+      const i = (y * target.width + x) * 4;
+      const inside =
+        x >= offsetX && x < offsetX + drawWidth && y >= offsetY && y < offsetY + drawHeight;
+      const colour = inside
+        ? bilinear(image, (x - offsetX) / scale, (y - offsetY) / scale)
+        : backdrop;
+
+      canvas[i] = colour[0];
+      canvas[i + 1] = colour[1];
+      canvas[i + 2] = colour[2];
+      canvas[i + 3] = 255; // store screenshots are opaque
+    }
+  }
+
+  const out = join(
+    dirname(input),
+    `${basename(input, extname(input))}-${target.width}x${target.height}.png`,
+  );
+  writeFileSync(out, encodePng(target.width, target.height, canvas));
+  console.log(`${out}  (source ${image.width}x${image.height}, scaled ${Math.round(scale * 100)}%)`);
+}
+
+/* -------------------------------------------------------------------- cli */
+
+const args = process.argv.slice(2);
+const sizes = args.filter((a) => /^\d+$/.test(a)).map(Number);
+const inputs = args.filter((a) => !/^\d+$/.test(a));
+
+if (!inputs.length) {
+  console.error("usage: npm run screenshot -- <file.png> [more.png ...] [width height]");
+  console.error("       paths use forward slashes:  ~/Pictures/Screenshots/shot1.png");
   process.exit(1);
 }
 
-const target = { width: Number(widthArg) || 1280, height: Number(heightArg) || 800 };
-const image = decodePng(readFileSync(input));
+const target = { width: sizes[0] ?? 1280, height: sizes[1] ?? 800 };
 
-// Never scale up - enlarging a screenshot just makes it soft and obviously
-// stretched. Small captures get centred on the canvas instead.
-const scale = Math.min(target.width / image.width, target.height / image.height, 1);
-const drawWidth = Math.round(image.width * scale);
-const drawHeight = Math.round(image.height * scale);
-const offsetX = Math.round((target.width - drawWidth) / 2);
-const offsetY = Math.round((target.height - drawHeight) / 2);
-
-// Backdrop from the image's own top-left pixel, so padding reads as part of the
-// shot rather than a grey border someone forgot to crop.
-const backdrop = sample(image, 0, 0);
-
-const canvas = Buffer.alloc(target.width * target.height * 4);
-for (let y = 0; y < target.height; y++) {
-  for (let x = 0; x < target.width; x++) {
-    const i = (y * target.width + x) * 4;
-    let colour = backdrop;
-
-    if (x >= offsetX && x < offsetX + drawWidth && y >= offsetY && y < offsetY + drawHeight) {
-      colour = bilinear(image, (x - offsetX) / scale, (y - offsetY) / scale);
+for (const input of inputs) {
+  if (!existsSync(input)) {
+    console.error(`Cannot find: ${input}`);
+    // A Windows path with no separator left in it means the shell ate the
+    // backslashes on the way here, which is easy to miss and baffling to debug.
+    if (/^[A-Za-z]:[^\\/]/.test(input)) {
+      console.error("");
+      console.error("That path lost its backslashes - Git Bash treats \\ as an escape character.");
+      console.error("Use forward slashes instead:");
+      console.error("  npm run screenshot -- ~/Pictures/Screenshots/shot1.png");
     }
-    canvas[i] = colour[0];
-    canvas[i + 1] = colour[1];
-    canvas[i + 2] = colour[2];
-    canvas[i + 3] = 255; // store screenshots are opaque
+    process.exitCode = 1;
+    continue;
+  }
+
+  try {
+    fit(input, target);
+  } catch (error) {
+    console.error(`${input}: ${error.message}`);
+    process.exitCode = 1;
   }
 }
-
-const out = join(
-  dirname(input),
-  `${basename(input, extname(input))}-${target.width}x${target.height}.png`,
-);
-writeFileSync(out, encodePng(target.width, target.height, canvas));
-console.log(`${out}  (source ${image.width}x${image.height}, scaled ${Math.round(scale * 100)}%)`);

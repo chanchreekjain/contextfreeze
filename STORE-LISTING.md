@@ -194,8 +194,12 @@ Yours to take — Chrome accepts 1280×800 or 640×400, Edge 1280×800 or 640×4
 Capture whatever size is convenient, then:
 
 ```bash
-npm run screenshot -- path/to/shot.png
+npm run screenshot -- ~/Pictures/Screenshots/shot1.png
+npm run screenshot -- shot1.png shot2.png shot3.png    # several at once
 ```
+
+Use **forward slashes**. Git Bash treats `\` as an escape character, so
+`C:\Users\CJ\shot.png` arrives as `C:UsersCJshot.png`. `~` is `C:/Users/CJ`.
 
 which writes `shot-1280x800.png` — scaled down if needed, centred, and padded
 with a colour sampled from the shot's own corner. Stores reject anything that is
