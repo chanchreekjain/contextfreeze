@@ -32,6 +32,43 @@ const SKIPPED_INPUT_TYPES = new Set([
   "image",
 ]);
 
+/** Rects this far outside the document are the classic "park it off-canvas" trick. */
+const OFFSCREEN_LIMIT_PX = 2000;
+
+/**
+ * Could the user actually have typed into this?
+ *
+ * Real pages keep hidden fields around for their own purposes - clipboard
+ * shims, measurement mirrors, template stores. A Reddit post page carries a
+ * 2340-character textarea that no human ever touched, and capturing it meant
+ * sweeping a page's private scratch space into every freeze and writing it back
+ * on restore.
+ *
+ * A field scrolled out of view is still fair game. A field with no rendered box,
+ * or parked far off-canvas, or explicitly hidden from assistive tech, is not.
+ */
+function isUserVisible(el: Element): boolean {
+  if (!(el instanceof HTMLElement)) return false;
+  if (el.closest('[aria-hidden="true"]')) return false;
+  if (el.getClientRects().length === 0) return false;
+
+  const style = getComputedStyle(el);
+  if (style.visibility === "hidden" || style.visibility === "collapse") return false;
+  if (Number(style.opacity) === 0) return false;
+
+  const rect = el.getBoundingClientRect();
+  if (rect.width === 0 || rect.height === 0) return false;
+
+  // Off-canvas in document coordinates, not viewport coordinates - otherwise
+  // anything scrolled past would be wrongly discarded.
+  const top = rect.top + window.scrollY;
+  const left = rect.left + window.scrollX;
+  if (top + rect.height < -OFFSCREEN_LIMIT_PX || left + rect.width < -OFFSCREEN_LIMIT_PX) {
+    return false;
+  }
+  return true;
+}
+
 function isScrollable(el: Element): boolean {
   const style = getComputedStyle(el);
   const canScrollY =
@@ -200,6 +237,8 @@ export function captureScrolls(): ScrollAnchor[] {
 export const CANDIDATE_SELECTOR =
   'input, textarea, select, [contenteditable=""], [contenteditable="true"], video, audio';
 
+export { isUserVisible };
+
 export function collectCandidates(): Element[] {
   return deepQueryAll(CANDIDATE_SELECTOR);
 }
@@ -210,8 +249,11 @@ function pick<T extends Element>(candidates: Element[], match: (el: Element) => 
 
 export function captureFields(candidates: Element[] = collectCandidates()): FormFieldValue[] {
   const out: FormFieldValue[] = [];
+  // Media is exempt: a video element can legitimately be zero-sized or offscreen
+  // while still being the thing playing.
+  const visible = candidates.filter((el) => el instanceof HTMLMediaElement || isUserVisible(el));
 
-  for (const el of pick<HTMLInputElement>(candidates, (e) => e instanceof HTMLInputElement)) {
+  for (const el of pick<HTMLInputElement>(visible, (e) => e instanceof HTMLInputElement)) {
     const type = (el.type || "text").toLowerCase();
     if (SKIPPED_INPUT_TYPES.has(type)) continue;
 
@@ -237,12 +279,12 @@ export function captureFields(candidates: Element[] = collectCandidates()): Form
     });
   }
 
-  for (const el of pick<HTMLTextAreaElement>(candidates, (e) => e instanceof HTMLTextAreaElement)) {
+  for (const el of pick<HTMLTextAreaElement>(visible, (e) => e instanceof HTMLTextAreaElement)) {
     if (!el.value || el.value === el.defaultValue) continue;
     out.push({ ref: describe(el), kind: "textarea", value: el.value.slice(0, MAX_FIELD_CHARS) });
   }
 
-  for (const el of pick<HTMLSelectElement>(candidates, (e) => e instanceof HTMLSelectElement)) {
+  for (const el of pick<HTMLSelectElement>(visible, (e) => e instanceof HTMLSelectElement)) {
     const selected: number[] = [];
     let changed = false;
     for (let i = 0; i < el.options.length; i++) {
@@ -256,7 +298,7 @@ export function captureFields(candidates: Element[] = collectCandidates()): Form
   }
 
   for (const el of pick<HTMLElement>(
-    candidates,
+    visible,
     (e) => e instanceof HTMLElement && e.isContentEditable,
   )) {
     const html = el.innerHTML;

@@ -211,6 +211,19 @@ Stated plainly, because the failure modes are inherent and not bugs:
 - **Rich text editors** (Notion, Google Docs). They keep their own document
   model; writing into their `contenteditable` will be overwritten.
 
+## What counts as "your" text
+
+A field is only captured if **you could have typed into it**. Pages keep hidden
+fields for their own purposes — clipboard shims, measurement mirrors, template
+stores — and a real Reddit post page carries a 2340-character textarea that no
+human ever touched. Sweeping that into every freeze meant storing a page's
+private scratch space and writing it back on restore.
+
+So capture skips a field with no rendered box, `visibility: hidden`, zero
+opacity, zero size, anything inside `aria-hidden`, or a box parked far
+off-canvas. A field merely **scrolled out of view is still yours** and is kept —
+that distinction is measured in document coordinates, not viewport ones.
+
 ## What it deliberately does not save
 
 - **Passwords.** `input[type=password]` is never read. Storage is plaintext
@@ -306,6 +319,9 @@ highlight made in there is painted back in the same tree.
 
 `test/diagnose.test.mjs` — that the report tells the truth about closed roots
 and shadow-nested fields, and that no field value ever leaks into it.
+
+`test/visibility.test.mjs` — that a page's hidden scratch fields stay out and
+that a field scrolled far out of view stays in.
 
 `test/checkpoints.test.mjs` — marking a spot and jumping back to it, flagging a
 moment and landing on the exact second, and the page-keying rules that keep a

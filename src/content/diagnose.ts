@@ -1,4 +1,4 @@
-import { capturePage, collectCandidates } from "./capture";
+import { capturePage, collectCandidates, isUserVisible } from "./capture";
 import { deepQueryAll, shadowRoots } from "./dom";
 import { structuralPath } from "./element-path";
 
@@ -59,8 +59,10 @@ export function diagnose(): string {
   const roots = shadowRoots();
   const deepestRoot = roots.reduce((max, root) => Math.max(max, shadowDepth(root.host) + 1), 0);
 
-  // A custom element with no reachable shadowRoot is very likely using a CLOSED
-  // one, which no content script can ever see into.
+  // A custom element with no reachable shadowRoot either uses a CLOSED one, or
+  // simply does not use shadow DOM at all - and there is no way to tell which
+  // from outside. An earlier version of this report called them all "likely
+  // closed roots", which was a guess dressed up as a finding.
   const customElements = deepQueryAll("*").filter((el) => el.tagName.includes("-"));
   const opaque = customElements.filter((el) => !el.shadowRoot);
 
@@ -79,7 +81,9 @@ export function diagnose(): string {
   add(`  custom elements: ${customElements.length}, of which ${opaque.length} expose no shadow root`);
   if (opaque.length) {
     const names = [...new Set(opaque.map((el) => el.tagName.toLowerCase()))].slice(0, 8);
-    add(`    likely closed roots, unreachable: ${names.join(", ")}`);
+    add("    (either no shadow DOM at all, or a closed root - indistinguishable");
+    add("     from a content script, so this is not evidence of a problem)");
+    add(`    e.g. ${names.join(", ")}`);
   }
   add(`  iframes: ${iframes.length} (${reachableFrames} same-origin, ` +
       `${iframes.length - reachableFrames} cross-origin)`);
@@ -98,7 +102,8 @@ export function diagnose(): string {
   add(`EDITABLE FIELDS FOUND: ${editable.length}, of which ${withContent.length} have content`);
   for (const el of withContent.slice(0, MAX_LISTED)) {
     const where = inShadow(el) ? `shadow depth ${shadowDepth(el)}` : "light";
-    add(`  [${where}] ${describeElement(el)}  ${contentLength(el)} chars`);
+    const seen = isUserVisible(el) ? "" : "  HIDDEN - not captured";
+    add(`  [${where}] ${describeElement(el)}  ${contentLength(el)} chars${seen}`);
     add(`      ${structuralPath(el)}`);
   }
   if (withContent.length > MAX_LISTED) add(`  ...and ${withContent.length - MAX_LISTED} more`);
@@ -130,7 +135,9 @@ export function diagnose(): string {
   add(`SKIPPED DESPITE HAVING CONTENT: ${skipped.length}`);
   for (const el of skipped.slice(0, MAX_LISTED)) {
     let why = "unknown - this is the interesting case";
-    if (el instanceof HTMLInputElement) {
+    if (!isUserVisible(el)) {
+      why = "not visible to you - the page's own scratch field, not yours";
+    } else if (el instanceof HTMLInputElement) {
       const type = (el.type || "text").toLowerCase();
       if (["password", "hidden", "file", "submit", "button", "reset", "image"].includes(type)) {
         why = `input type "${type}" is never captured, by design`;
@@ -145,6 +152,8 @@ export function diagnose(): string {
   add();
 
   add("NOTES");
+  add("  A field only counts if you could have typed into it. Pages keep hidden");
+  add("  textareas for their own purposes, and those are none of our business.");
   if (iframes.length > reachableFrames) {
     add("  A cross-origin iframe cannot be read from the top frame at all. If the");
     add("  editor you care about lives in one, nothing above will have seen it.");

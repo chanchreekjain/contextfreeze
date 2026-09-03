@@ -44,9 +44,12 @@ check("it says so explicitly", report.includes("lengths only"));
 console.log("\n== it tells the truth about the page ==");
 check("it counts the open shadow roots", /open shadow roots: [1-9]/.test(report),
   (report.match(/open shadow roots: \d+/) || [])[0]);
-check("it flags a closed root as unreachable",
-  report.includes("sealed-box") && report.includes("likely closed roots"),
-  (report.match(/.*likely closed roots.*/) || [])[0]);
+check("it lists an element whose root it cannot reach",
+  report.includes("sealed-box"),
+  (report.match(/.*sealed-box.*/) || [])[0]?.trim());
+check("...without claiming that proves a closed root",
+  report.includes("indistinguishable") && !report.includes("likely closed roots"),
+  "no shadow DOM at all looks identical to a closed root from out here");
 check("it lists a field living inside a shadow root",
   /\[shadow depth \d\]/.test(report),
   (report.match(/\[shadow depth \d\][^\n]*/) || [])[0]);

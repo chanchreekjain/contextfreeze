@@ -96,6 +96,17 @@ ${sideLines}
      inside an open shadow root, where document.querySelectorAll cannot see it. -->
 <my-composer id="composer"></my-composer>
 
+<!-- The page's own scratch fields. A real Reddit post page carries a 2340-char
+     hidden textarea that no human ever touched. None of these are ours. -->
+<textarea id="scratch-none" style="display:none">page scratch, display none</textarea>
+<div style="position:absolute;left:-9999px;top:0">
+  <textarea id="scratch-offcanvas">page scratch, parked off-canvas</textarea>
+</div>
+<div aria-hidden="true">
+  <textarea id="scratch-aria">page scratch, hidden from assistive tech</textarea>
+</div>
+<textarea id="scratch-zero" style="width:0;height:0;border:0;padding:0">page scratch, zero sized</textarea>
+
 <audio id="clip" src="clip.wav" preload="metadata" controls></audio>
 
 <!-- Stands in for a real site player: it has no id, it re-parents itself into a
