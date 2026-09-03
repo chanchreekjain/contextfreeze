@@ -5,6 +5,7 @@ import type {
   RestoreReport,
   ScrollAnchor,
   SelectionSnapshot,
+  UnrestoredField,
 } from "../types";
 import { RESUME_REWIND_SECONDS } from "../constants";
 import { deepQueryAll, shadowRoots } from "./dom";
@@ -45,6 +46,9 @@ const HIGHLIGHT_STYLE_ID = "contextfreeze-highlight-style";
 const SELECTION_GUARD_MS = 8_000;
 const SELECTION_GUARD_INTERVAL_MS = 500;
 const MAX_SELECTION_CORRECTIONS = 8;
+/** Enough to hand back a lost comment; not so much that storage balloons. */
+const MAX_UNRESTORED = 8;
+const MAX_UNRESTORED_CHARS = 20_000;
 
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
@@ -514,12 +518,24 @@ export async function restorePage(context: PageContext): Promise<RestoreReport> 
     window.removeEventListener(name, abort, { capture: true });
   }
 
+  // Anything we could not put back is handed out rather than dropped. A draft
+  // comment that vanishes silently is the worst thing this extension could do.
+  const unrestored: UnrestoredField[] = pendingFields
+    .filter((field) => field.value.trim().length > 0)
+    .slice(0, MAX_UNRESTORED)
+    .map((field) => ({
+      label: field.ref.id ?? field.ref.name ?? field.kind,
+      kind: field.kind,
+      value: field.value.slice(0, MAX_UNRESTORED_CHARS),
+    }));
+
   const report: RestoreReport = {
     url: location.href,
     scrolls: [done.scrolls, totals.scrolls],
     fields: [done.fields, totals.fields],
     media: [done.media, totals.media],
     selection: [context.selection && !selection ? 1 : 0, context.selection ? 1 : 0],
+    unrestored,
     aborted,
     elapsedMs: Date.now() - started,
   };

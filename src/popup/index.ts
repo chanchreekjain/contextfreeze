@@ -4,6 +4,7 @@ import type {
   FreezeResponse,
   LastReportsResponse,
   ListResponse,
+  DiagnoseResponse,
   ImportResponse,
   RestoreResponse,
   SimpleResponse,
@@ -28,6 +29,12 @@ const saveMdButton = document.getElementById("save-md") as HTMLButtonElement;
 const saveJsonButton = document.getElementById("save-json") as HTMLButtonElement;
 const importButton = document.getElementById("import") as HTMLButtonElement;
 const importInput = document.getElementById("import-file") as HTMLInputElement;
+const diagnoseButton = document.getElementById("diagnose") as HTMLButtonElement;
+const reportPanel = document.getElementById("report-panel") as HTMLElement;
+const reportEl = document.getElementById("report") as HTMLPreElement;
+const reportCopy = document.getElementById("report-copy") as HTMLButtonElement;
+const reportClose = document.getElementById("report-close") as HTMLButtonElement;
+const recoverButton = document.getElementById("recover") as HTMLButtonElement;
 
 /** The tab the popup was opened over. Every checkpoint action is relative to it. */
 let currentTab: chrome.tabs.Tab | null = null;
@@ -85,6 +92,41 @@ saveJsonButton.addEventListener("click", async () => {
 });
 
 importButton.addEventListener("click", () => importInput.click());
+
+/* ----------------------------------------------------------------- diagnose */
+
+diagnoseButton.addEventListener("click", async () => {
+  if (currentTab?.id == null) return;
+  diagnoseButton.disabled = true;
+  setStatus("Looking at the page...");
+
+  let result: DiagnoseResponse;
+  try {
+    result = await chrome.tabs.sendMessage(currentTab.id, { type: "CF_DIAGNOSE" });
+  } catch {
+    result = { ok: false, error: "No content script on this page. Reload it and try again." };
+  }
+  diagnoseButton.disabled = false;
+
+  if (!result.ok) {
+    setStatus(result.error);
+    return;
+  }
+  setStatus("");
+  reportEl.textContent = result.report;
+  reportPanel.hidden = false;
+  reportEl.focus();
+});
+
+reportCopy.addEventListener("click", async () => {
+  await navigator.clipboard.writeText(reportEl.textContent ?? "");
+  setStatus("Diagnostic copied. Paste it anywhere.");
+});
+
+reportClose.addEventListener("click", () => {
+  reportPanel.hidden = true;
+  reportEl.textContent = "";
+});
 
 importInput.addEventListener("change", async () => {
   const file = importInput.files?.[0];
@@ -237,13 +279,49 @@ function summariseReport(report: RestoreReport): string {
   return `Last restore on ${host}: ${restored}/${total}, missed ${missed.join(", ")}.`;
 }
 
+/** contenteditable values are HTML; show the words, not the markup. */
+function asPlainText(value: string, kind: string): string {
+  if (kind !== "contenteditable") return value;
+  const holder = document.createElement("div");
+  holder.innerHTML = value;
+  return holder.innerText.trim();
+}
+
+function recoverySheet(report: RestoreReport): string {
+  const lines = [
+    "Text ContextFreeze could not put back",
+    report.url,
+    "",
+  ];
+  for (const field of report.unrestored) {
+    lines.push(`--- ${field.label} (${field.kind}) ---`);
+    lines.push(asPlainText(field.value, field.kind));
+    lines.push("");
+  }
+  return lines.join("\n");
+}
+
 async function showLastReport(): Promise<void> {
   const { reports }: LastReportsResponse =
     await chrome.runtime.sendMessage({ type: "CF_LAST_REPORTS" });
   const latest = reports[0];
-  if (latest) {
-    const line = summariseReport(latest);
-    if (line) setStatus(line);
+  if (!latest) return;
+
+  const line = summariseReport(latest);
+  if (line) setStatus(line);
+
+  // If text was captured and could not be put back, it is still here. Offer it
+  // instead of quietly losing someone's half-written comment.
+  if (latest.unrestored?.length) {
+    recoverButton.hidden = false;
+    recoverButton.textContent =
+      `Recover ${latest.unrestored.length} unrestored field` +
+      (latest.unrestored.length === 1 ? "" : "s");
+    recoverButton.onclick = () => {
+      reportEl.textContent = recoverySheet(latest);
+      reportPanel.hidden = false;
+      reportEl.focus();
+    };
   }
 }
 

@@ -1,6 +1,7 @@
 import type { CaptureResponse, ContentReadyResponse, Message } from "../messages";
 import { capturePage, installSelectionTracker } from "./capture";
 import { dropCheckpoint, jumpTo } from "./checkpoint";
+import { diagnose } from "./diagnose";
 import { askForName } from "./namer";
 import { restorePage } from "./restore";
 
@@ -60,6 +61,15 @@ if (!window.__contextFreezeLoaded && window.top === window) {
           ? { ok: true, draft }
           : { ok: false, error: "Nothing to mark here - no video or audio on this page." },
       );
+      return true;
+    }
+
+    if (message.type === "CF_DIAGNOSE") {
+      try {
+        sendResponse({ ok: true, report: diagnose() });
+      } catch (error) {
+        sendResponse({ ok: false, error: String(error) });
+      }
       return true;
     }
 

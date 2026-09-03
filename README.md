@@ -133,6 +133,30 @@ since — and it refuses a file it does not understand rather than importing jun
 
 ---
 
+## When it does not work: Diagnose
+
+The popup footer has a **Diagnose** button. It reports what capture can actually
+*see* on the page in front of it — how many open shadow roots, how many custom
+elements expose no root (which means closed, and unreachable), how many iframes
+and how many of those are cross-origin, every editable field it found with its
+content length and full path, what capture recorded, and **what it skipped
+despite having content, with the reason**.
+
+It reports shapes, counts and lengths only. No field contents appear in it
+anywhere, so it is safe to paste into a bug report.
+
+This exists because three fixes in a row were made by reasoning about what a
+site probably does, and all three were wrong. A page that will not restore
+should be able to explain itself.
+
+## Nothing captured is ever silently lost
+
+If a field cannot be put back — the element is gone, the page never rebuilt it,
+an editor overwrote it — the text is **not** discarded. It comes out in the
+restore report, and the popup offers to hand it back so you can paste it
+yourself. A half-written comment disappearing without a word is the worst thing
+this extension could do, so it does not do it.
+
 ## Where it actually earns its keep
 
 Worth being honest about: on some sites you will not notice it, because the site
@@ -240,6 +264,7 @@ src/
 │   ├── restore.ts         the retry loop (the hard part)
 │   ├── checkpoint.ts      dropping and jumping to a single marked place
 │   ├── dom.ts             traversal that crosses open shadow boundaries
+│   ├── diagnose.ts        what capture can see on this page, and what it skipped
 │   ├── namer.ts           the in-page "name this checkpoint" prompt
 │   └── text-range.ts      re-finding a highlight across text nodes
 └── popup/index.ts         the UI
@@ -278,6 +303,9 @@ its good entries and that junk is refused outright. Pure functions, no browser.
 `test/shadow-dom.test.mjs` — the Reddit case: a web component whose editor is
 inside an open shadow root, proving the draft is captured, restored, and that a
 highlight made in there is painted back in the same tree.
+
+`test/diagnose.test.mjs` — that the report tells the truth about closed roots
+and shadow-nested fields, and that no field value ever leaks into it.
 
 `test/checkpoints.test.mjs` — marking a spot and jumping back to it, flagging a
 moment and landing on the exact second, and the page-keying rules that keep a

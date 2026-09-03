@@ -108,6 +108,17 @@ export interface Freeze {
   tabs: FrozenTab[];
 }
 
+/**
+ * Text that was captured but could not be put back - the field is gone, or the
+ * page never rebuilt it. Carried out of the restore so the popup can hand it
+ * over rather than dropping it on the floor.
+ */
+export interface UnrestoredField {
+  label: string;
+  kind: FieldKind;
+  value: string;
+}
+
 /** What actually made it back, so the UI can be honest about partial restores. */
 export interface RestoreReport {
   url: string;
@@ -115,6 +126,8 @@ export interface RestoreReport {
   fields: [restored: number, total: number];
   media: [restored: number, total: number];
   selection: [restored: number, total: number];
+  /** Text we captured and failed to restore. Never silently discarded. */
+  unrestored: UnrestoredField[];
   /** True when the user took over and we stood down before finishing. */
   aborted: boolean;
   elapsedMs: number;

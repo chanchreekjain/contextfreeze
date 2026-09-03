@@ -49,10 +49,27 @@ export function deepQuery<T extends Element>(selector: string, root: ParentNode 
   return (deepQueryAll<T>(selector, root)[0] as T | undefined) ?? null;
 }
 
-/** Every open shadow root on the page, outermost first. */
+let cachedRoots: { at: number; roots: ShadowRoot[] } | null = null;
+/** Long enough to cover a burst of retries, short enough to notice new components. */
+const ROOTS_CACHE_MS = 1_000;
+
+/**
+ * Every open shadow root on the page, outermost first.
+ *
+ * Memoised: this walks the whole document, and the restore loop can ask for it
+ * on every failed sweep for up to 30 seconds. Without the cache that is dozens
+ * of full-DOM traversals on exactly the heavy pages where it hurts most.
+ */
 export function shadowRoots(root: ParentNode = document): ShadowRoot[] {
-  const hosts = deepQueryAll("*", root).filter((el) => el.shadowRoot);
-  return hosts.map((el) => el.shadowRoot as ShadowRoot);
+  const now = Date.now();
+  if (root === document && cachedRoots && now - cachedRoots.at < ROOTS_CACHE_MS) {
+    return cachedRoots.roots;
+  }
+  const roots = deepQueryAll("*", root)
+    .filter((el) => el.shadowRoot)
+    .map((el) => el.shadowRoot as ShadowRoot);
+  if (root === document) cachedRoots = { at: now, roots };
+  return roots;
 }
 
 /** The tree an element actually lives in - its shadow root, or the document. */

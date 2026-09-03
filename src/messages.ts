@@ -34,6 +34,7 @@ export interface AutosaveMsg { type: "CF_AUTOSAVE"; draft: CheckpointDraft }
 
 /** background -> content */
 export interface DropMsg { type: "CF_DROP"; kind: CheckpointKind }
+export interface DiagnoseMsg { type: "CF_DIAGNOSE" }
 export interface JumpMsg { type: "CF_JUMP"; checkpoint: Checkpoint }
 export interface NamePromptMsg {
   type: "CF_NAME_PROMPT";
@@ -69,6 +70,7 @@ export type Message =
   | ImportCheckpointsMsg
   | AutosaveMsg
   | DropMsg
+  | DiagnoseMsg
   | JumpMsg
   | NamePromptMsg;
 
@@ -92,6 +94,7 @@ export type LastReportsResponse = { reports: RestoreReport[] };
 
 export type DropResponse = { ok: true; draft: CheckpointDraft } | { ok: false; error: string };
 export type CheckpointListResponse = { checkpoints: Checkpoint[] };
+export type DiagnoseResponse = { ok: true; report: string } | { ok: false; error: string };
 export type ImportResponse =
   | { ok: true; added: number; skipped: number }
   | { ok: false; error: string };
