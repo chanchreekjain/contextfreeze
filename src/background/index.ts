@@ -13,6 +13,7 @@ import {
   saveFreeze,
   setPending,
 } from "../storage";
+import { resumeUrl } from "../site-adapters";
 import type { Freeze, FrozenTab } from "../types";
 
 /** Only ordinary web pages can host a content script. */
@@ -109,7 +110,9 @@ async function restoreFreeze(id: string): Promise<RestoreResponse> {
   if (!openable.length) return { ok: false, error: "Nothing in this freeze can be reopened." };
 
   const win = await chrome.windows.create({
-    url: openable.map((t) => t.url),
+    // resumeUrl hands sites with their own resume mechanism (YouTube's ?t=)
+    // the timestamp up front, rather than seeking after their player boots.
+    url: openable.map(resumeUrl),
     focused: true,
   });
   const created = win.tabs ?? [];

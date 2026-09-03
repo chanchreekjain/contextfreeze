@@ -6,6 +6,7 @@ import type {
   ScrollAnchor,
   SelectionSnapshot,
 } from "../types";
+import { RESUME_REWIND_SECONDS } from "../constants";
 import { resolve, textOf } from "./element-path";
 import { findTextRange } from "./text-range";
 
@@ -26,6 +27,15 @@ const SETTLE_INTERVAL_MS = 450;
 /** Do not fight the page over sub-pixel drift. */
 const SCROLL_TOLERANCE_PX = 4;
 const HAVE_METADATA = 1;
+/** How long to keep an eye on a player that might reset the playhead under us. */
+const MEDIA_GUARD_MS = 12_000;
+const MEDIA_GUARD_INTERVAL_MS = 400;
+const MAX_SEEK_CORRECTIONS = 8;
+/** Only intervene if the player threw us properly backwards, not by a rounding error. */
+const MEDIA_DRIFT_TOLERANCE_S = 5;
+
+const HIGHLIGHT_NAME = "contextfreeze";
+const HIGHLIGHT_STYLE_ID = "contextfreeze-highlight-style";
 
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
@@ -97,11 +107,31 @@ function applyField(field: FormFieldValue): boolean {
 /* ------------------------------------------------------------------- media */
 
 const seekPending = new WeakSet<HTMLMediaElement>();
+const guarded = new WeakSet<HTMLMediaElement>();
+
+/**
+ * A player's DOM path is the least reliable thing about it - YouTube rebuilds
+ * its player subtree on every load, so the structural path captured at freeze
+ * time routinely resolves to nothing. Try the recorded ref, then "the only
+ * <video> on the page", then the ordinal.
+ */
+function resolveMedia(state: MediaState): HTMLMediaElement | null {
+  const byRef = resolve(state.ref);
+  if (byRef instanceof HTMLMediaElement) return byRef;
+
+  const sameTag = Array.from(document.querySelectorAll<HTMLMediaElement>(state.tag));
+  if (sameTag.length === 1) return sameTag[0] ?? null;
+  return sameTag[state.index] ?? null;
+}
+
+function targetTime(state: MediaState): number {
+  return Math.max(0, state.currentTime - RESUME_REWIND_SECONDS);
+}
 
 function seek(el: HTMLMediaElement, state: MediaState): void {
   try {
     const limit = Number.isFinite(el.duration) ? el.duration - 0.25 : Infinity;
-    el.currentTime = Math.max(0, Math.min(state.currentTime, limit));
+    el.currentTime = Math.max(0, Math.min(targetTime(state), limit));
     el.playbackRate = state.playbackRate;
     // Never auto-play. Coming back to a frozen window should not start audio.
   } catch {
@@ -109,21 +139,54 @@ function seek(el: HTMLMediaElement, state: MediaState): void {
   }
 }
 
-function applyMedia(state: MediaState): boolean {
-  const el = resolve(state.ref);
-  if (!(el instanceof HTMLMediaElement)) return false;
+/**
+ * One seek is not enough. Site players initialise asynchronously and reset
+ * currentTime to their own idea of the start AFTER we have seeked, so the
+ * playhead silently snaps back to zero a second later. Watch the element for a
+ * few seconds and put it back - bounded, and only while the user is hands-off.
+ */
+function guardSeek(el: HTMLMediaElement, state: MediaState, isAborted: () => boolean): void {
+  if (guarded.has(el)) return;
+  guarded.add(el);
+
+  const wanted = targetTime(state);
+  const floor = Math.max(1, wanted - MEDIA_DRIFT_TOLERANCE_S);
+  const deadline = Date.now() + MEDIA_GUARD_MS;
+  let corrections = 0;
+
+  const timer = setInterval(() => {
+    if (isAborted() || !el.isConnected || Date.now() > deadline || corrections >= MAX_SEEK_CORRECTIONS) {
+      clearInterval(timer);
+      return;
+    }
+    // Playing forward is normal, and a user seeking elsewhere is none of our
+    // business. Only a jump backwards past the floor means the player reset us.
+    if (el.currentTime < floor) {
+      corrections++;
+      seek(el, state);
+    }
+  }, MEDIA_GUARD_INTERVAL_MS);
+}
+
+function applyMedia(state: MediaState, isAborted: () => boolean): boolean {
+  const el = resolveMedia(state);
+  if (!el) return false;
 
   if (el.readyState < HAVE_METADATA) {
     // Duration is unknown, so a seek would be clamped to 0. Wait for metadata,
     // but register the listener only once however many times we retry.
     if (!seekPending.has(el)) {
       seekPending.add(el);
-      el.addEventListener("loadedmetadata", () => seek(el, state), { once: true });
+      el.addEventListener("loadedmetadata", () => {
+        seek(el, state);
+        guardSeek(el, state, isAborted);
+      }, { once: true });
     }
     return false;
   }
 
   seek(el, state);
+  guardSeek(el, state, isAborted);
   return true;
 }
 
@@ -193,17 +256,69 @@ function applyScroll(anchor: ScrollAnchor, allowPixelFallback: boolean): boolean
 
 /* --------------------------------------------------------------- selection */
 
-function applySelection(snapshot: SelectionSnapshot): boolean {
+interface HighlightRegistry {
+  set(name: string, highlight: object): void;
+  delete(name: string): void;
+}
+
+/**
+ * Paint the highlight with the CSS Custom Highlight API rather than restoring a
+ * native selection.
+ *
+ * A native selection loses every fight: the first click clears it, and an SPA
+ * that calls focus() on load (Gmail opening a compose window, for one) clears it
+ * before you ever see it. A custom highlight is not a selection, so nothing
+ * clears it - and it mutates no DOM, so no page's own code trips over it.
+ */
+function paintHighlight(range: Range): boolean {
+  const ctor = (window as unknown as { Highlight?: new (...ranges: Range[]) => object }).Highlight;
+  const registry = (CSS as unknown as { highlights?: HighlightRegistry }).highlights;
+  if (!ctor || !registry) return false;
+
+  if (!document.getElementById(HIGHLIGHT_STYLE_ID)) {
+    const style = document.createElement("style");
+    style.id = HIGHLIGHT_STYLE_ID;
+    style.textContent =
+      "::highlight(" + HIGHLIGHT_NAME + "){background:#ffe066;color:#000;}";
+    document.head.appendChild(style);
+  }
+  registry.set(HIGHLIGHT_NAME, new ctor(range));
+
+  // Step aside as soon as the user highlights something of their own. Not
+  // { once: true }: collapsed selection changes fire constantly (restoring a
+  // form field is enough) and would eat the listener before it ever mattered.
+  const onSelectionChange = () => {
+    const selection = window.getSelection();
+    if (selection && !selection.isCollapsed) {
+      registry.delete(HIGHLIGHT_NAME);
+      document.removeEventListener("selectionchange", onSelectionChange);
+    }
+  };
+  document.addEventListener("selectionchange", onSelectionChange);
+  return true;
+}
+
+function applySelection(snapshot: SelectionSnapshot, hasScrollToRestore: boolean): boolean {
   const scope = (snapshot.ref ? resolve(snapshot.ref) : null) ?? document.body;
   if (!scope) return false;
 
   const range = findTextRange(scope, snapshot.text);
   if (!range) return false;
 
-  const selection = window.getSelection();
-  if (!selection) return false;
-  selection.removeAllRanges();
-  selection.addRange(range);
+  if (!paintHighlight(range)) {
+    const selection = window.getSelection();
+    if (!selection) return false;
+    selection.removeAllRanges();
+    selection.addRange(range);
+  }
+
+  // Nothing else is going to move the viewport, so bring the mark into view.
+  if (!hasScrollToRestore) {
+    const rect = range.getBoundingClientRect();
+    if (rect.top < 0 || rect.top > window.innerHeight) {
+      range.startContainer.parentElement?.scrollIntoView({ block: "center", behavior: "instant" });
+    }
+  }
   return true;
 }
 
@@ -239,6 +354,9 @@ export async function restorePage(context: PageContext): Promise<RestoreReport> 
     window.addEventListener(name, abort, { passive: true, capture: true, once: true });
   }
 
+  const isAborted = () => aborted;
+  const hasScrollToRestore = context.scrolls.length > 0;
+
   const sweep = (allowPixelFallback: boolean) => {
     for (let i = pendingFields.length - 1; i >= 0; i--) {
       const field = pendingFields[i];
@@ -249,7 +367,7 @@ export async function restorePage(context: PageContext): Promise<RestoreReport> 
     }
     for (let i = pendingMedia.length - 1; i >= 0; i--) {
       const media = pendingMedia[i];
-      if (media && applyMedia(media)) {
+      if (media && applyMedia(media, isAborted)) {
         pendingMedia.splice(i, 1);
         done.media++;
       }
@@ -263,7 +381,7 @@ export async function restorePage(context: PageContext): Promise<RestoreReport> 
         done.scrolls++;
       }
     }
-    if (selection && applySelection(selection)) selection = null;
+    if (selection && applySelection(selection, hasScrollToRestore)) selection = null;
   };
 
   let delay = FIRST_DELAY_MS;

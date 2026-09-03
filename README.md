@@ -25,7 +25,7 @@ So instead ContextFreeze reloads the real page and re-applies a small
 | Page scroll | An **anchor element** near the top of the viewport, plus its offset | A raw `scrollY` lands you in the wrong place the moment lazy images, infinite scroll or a reflow change what lives at that pixel |
 | Nested scrollers | Same anchor trick, per container, up to 12 | Docs sidebars and chat panes are usually the context you actually lose |
 | Form fields | Value + the element's `id`/`name`/structural path | — |
-| Video / audio | `currentTime` and `playbackRate` | — |
+| Video / audio | `currentTime`, `playbackRate`, plus an ordinal | A player's DOM path is the least stable thing about it — YouTube rebuilds its player subtree on every load |
 | Highlight | The selected text, re-found by walking text nodes | XPath breaks on a single inserted node |
 | Tab groups, pinning | Title and colour, regrouped on restore | — |
 
@@ -39,7 +39,55 @@ item for up to 15 seconds, refuses the raw-pixel scroll fallback for the first
 If you touch the wheel, keyboard or mouse, it stops immediately. It will never
 fight you for control of the page.
 
+### Video is a special case
+
+Restoring a timestamp by seeking the `<video>` element does not survive contact
+with a real site player, for two reasons:
+
+1. The player **rebuilds or re-parents its DOM** after load, so the element path
+   recorded at freeze time no longer resolves. ContextFreeze therefore records an
+   ordinal too, and falls back to "the only `<video>` on the page".
+2. The player **resets `currentTime` after you have already seeked**, while it
+   finishes initialising. A single seek silently snaps back to zero a second
+   later. So the seek is *guarded*: for 12 seconds the element is watched, and if
+   the playhead jumps backwards past a tolerance it is put back — bounded to 8
+   corrections, and abandoned the moment you take over.
+
+Better still, where a site has its own resume mechanism, use it rather than
+fighting the player. `src/site-adapters.ts` rewrites the URL a restore opens:
+a YouTube watch page comes back as `?t=122s`, which the player honours before it
+even starts. The content-script seek stays as a backstop, and the two agree.
+
+Resume rewinds by **3 seconds** (`RESUME_REWIND_SECONDS`), because coming back
+mid-sentence is worse than a few seconds of overlap. Set it to 0 for exact resume.
+
+### Highlights are painted, not selected
+
+Restoring a native text selection loses every fight: the first click clears it,
+and an SPA that calls `focus()` on load — Gmail opening a compose window, for
+one — clears it before you ever see it. So the mark is painted with the CSS
+Custom Highlight API instead. It is not a selection, so nothing clears it, and it
+mutates no DOM, so no page's own code trips over it. It steps aside as soon as
+you highlight something of your own.
+
 ---
+
+## Where it actually earns its keep
+
+Worth being honest about: on some sites you will not notice it, because the site
+or the browser already does the job.
+
+- **Chrome restores scroll position itself** on reload and back/forward. On a
+  plain article you often cannot tell ContextFreeze apart from doing nothing.
+  Its scroll restore matters when the window was *closed* and reopened later,
+  when the page is an infinite-scroll feed Chrome gets wrong, or when the thing
+  you need back is a **nested** scroller Chrome ignores entirely.
+- **Gmail, and any app with draft autosave, restores your text itself.**
+
+The cases nothing else covers: long documentation with a scrolled sidebar,
+search results and forum threads deep in a scroll, video players without resume,
+dashboards and forms with no autosave, and — the one nothing else does at all —
+**the sentence you had highlighted**.
 
 ## What it will not do
 
@@ -135,7 +183,11 @@ sidebar, five form fields, a seeked audio element and a highlight spanning an
 inline tag; reload; restore; assert every one of them came back, that the
 password did not, and that the media did not auto-play.
 
-`test/edge-cases.test.mjs` — the failure modes:
+`test/media.test.mjs` — the YouTube failure mode reproduced: a player with no
+id that re-parents itself after load *and* resets its playhead to zero twice
+while initialising. Plus the URL rewrite, exercised directly.
+
+`test/edge-cases.test.mjs` — the other failure modes:
 
 - a **textless banner** filling the top of the viewport, which used to produce a
   null anchor and a silent downgrade to pixel restore
@@ -152,6 +204,8 @@ Set `CF_CHROME` to an existing Chromium binary to skip Playwright's download.
 
 - [ ] Auto-freeze on window close, so you never lose a session you forgot to save
 - [ ] `all_frames` capture for embedded players
+- [ ] Site adapters beyond YouTube (Vimeo, Coursera, podcast players)
+- [ ] Report what ContextFreeze actually added over Chrome's own restore
 - [ ] Restore into the current window instead of always opening a new one
 - [ ] Export/import a freeze as JSON
 - [ ] Fuzzy anchor matching, so a lightly-edited page still restores

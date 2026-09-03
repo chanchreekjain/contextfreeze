@@ -191,11 +191,15 @@ export function captureFields(): FormFieldValue[] {
 
 export function captureMedia(): MediaState[] {
   const out: MediaState[] = [];
+  const counts = { video: 0, audio: 0 };
   for (const el of document.querySelectorAll<HTMLMediaElement>("video, audio")) {
+    const tag = el.tagName.toLowerCase() === "audio" ? "audio" : "video";
+    const index = counts[tag]++;
     if (!Number.isFinite(el.currentTime) || el.currentTime < MIN_MEDIA_SECONDS) continue;
     out.push({
       ref: describe(el),
-      tag: el.tagName.toLowerCase() === "audio" ? "audio" : "video",
+      tag,
+      index,
       currentTime: el.currentTime,
       playbackRate: el.playbackRate,
       wasPaused: el.paused,

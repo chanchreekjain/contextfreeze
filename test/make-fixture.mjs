@@ -90,6 +90,13 @@ ${sideLines}
 
 <audio id="clip" src="clip.wav" preload="metadata" controls></audio>
 
+<!-- Stands in for a real site player: it has no id, it re-parents itself into a
+     shell after load (so the DOM path recorded at freeze time stops resolving),
+     and it resets the playhead to zero twice while initialising. -->
+<div id="player-host">
+  <audio class="stream" src="clip.wav" preload="metadata" controls></audio>
+</div>
+
 <main id="article">
 ${paragraphs}
 </main>
@@ -106,6 +113,17 @@ ${paragraphs}
   }
   setTimeout(() => injectLazy(2, 'first-wave'), 800);
   setTimeout(() => injectLazy(2, 'second-wave'), 1600);
+
+  // The site player boots: re-parent, then stomp on the playhead twice.
+  setTimeout(() => {
+    const el = document.querySelector('#player-host .stream');
+    const shell = document.createElement('div');
+    shell.id = 'player-shell';
+    el.parentElement.appendChild(shell);
+    shell.appendChild(el);
+  }, 300);
+  setTimeout(() => { document.querySelector('.stream').currentTime = 0; }, 700);
+  setTimeout(() => { document.querySelector('.stream').currentTime = 0; }, 1500);
 </script>
 </body>
 </html>

@@ -53,6 +53,13 @@ export interface FormFieldValue {
 export interface MediaState {
   ref: ElementRef;
   tag: "video" | "audio";
+  /**
+   * Position among the page's media elements of the same tag. Video players
+   * (YouTube above all) rebuild their DOM on every load, so the structural path
+   * captured at freeze time routinely fails to resolve. The ordinal is a much
+   * better bet, and "the only <video> on the page" is better still.
+   */
+  index: number;
   currentTime: number;
   playbackRate: number;
   /** Recorded for information only - restore never auto-plays. */

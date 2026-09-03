@@ -90,7 +90,13 @@ const after = await page.evaluate(() => ({
   clipTime: document.getElementById("clip").currentTime,
   clipRate: document.getElementById("clip").playbackRate,
   clipPaused: document.getElementById("clip").paused,
-  selection: String(window.getSelection()),
+  nativeSelection: String(window.getSelection()),
+  // The mark is painted with the CSS Custom Highlight API, not a selection.
+  highlighted: (() => {
+    const registry = CSS.highlights;
+    const mark = registry && registry.get("contextfreeze");
+    return mark ? Array.from(mark).map((r) => r.toString()).join("") : "";
+  })(),
 }));
 
 console.log("\n== assertions ==");
@@ -105,10 +111,16 @@ check("select restored", after.mode === "c", after.mode);
 check("checkbox restored", after.agree === true);
 check("contenteditable restored", after.rich.includes("rich"), after.rich);
 check("password NOT restored", after.secret === "", JSON.stringify(after.secret));
-check("media timestamp restored", Math.abs(after.clipTime - 12.5) < 0.5, String(after.clipTime));
+// RESUME_REWIND_SECONDS = 3: coming back mid-sentence is worse than a few
+// seconds of overlap, so a deliberate rewind is part of the contract.
+check("media timestamp restored with the 3s resume rewind",
+  Math.abs(after.clipTime - 9.5) < 0.6, String(after.clipTime));
 check("playback rate restored", after.clipRate === 1.5, String(after.clipRate));
 check("media left paused - never auto-plays", after.clipPaused === true);
-check("highlight re-found", after.selection.includes("brown fox"));
+check("highlight re-found and painted as a custom highlight",
+  after.highlighted.includes("brown fox"), JSON.stringify(after.highlighted.slice(0, 50)));
+check("no native selection was hijacked", after.nativeSelection === "",
+  JSON.stringify(after.nativeSelection));
 
 await browser.close();
 close();
