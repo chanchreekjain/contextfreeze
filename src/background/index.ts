@@ -14,7 +14,18 @@ import {
   setPending,
 } from "../storage";
 import { resumeUrl } from "../site-adapters";
-import type { Freeze, FrozenTab } from "../types";
+import type { Freeze, FrozenTab, RestoreReport } from "../types";
+
+const REPORTS_KEY = "cf_reports";
+const MAX_REPORTS = 20;
+
+async function recordReport(report: RestoreReport): Promise<void> {
+  const data = await chrome.storage.session.get(REPORTS_KEY);
+  const previous = (data[REPORTS_KEY] as RestoreReport[] | undefined) ?? [];
+  await chrome.storage.session.set({
+    [REPORTS_KEY]: [report, ...previous].slice(0, MAX_REPORTS),
+  });
+}
 
 /** Only ordinary web pages can host a content script. */
 const CAPTURABLE = /^https?:\/\//i;
@@ -184,6 +195,13 @@ chrome.runtime.onMessage.addListener((message: Message, sender, sendResponse) =>
         delete pending[key];
         await setPending(pending);
         return sendResponse({ context: entry.context });
+      }
+      case "CF_RESTORE_REPORT":
+        await recordReport(message.report);
+        return sendResponse({ ok: true });
+      case "CF_LAST_REPORTS": {
+        const data = await chrome.storage.session.get(REPORTS_KEY);
+        return sendResponse({ reports: (data[REPORTS_KEY] as RestoreReport[] | undefined) ?? [] });
       }
       case "CF_FREEZE_WINDOW":
         return sendResponse(await freezeWindow(message.windowId));

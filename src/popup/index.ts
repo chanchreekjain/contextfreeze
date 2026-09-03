@@ -1,5 +1,10 @@
-import type { FreezeResponse, ListResponse, RestoreResponse } from "../messages";
-import type { Freeze } from "../types";
+import type {
+  FreezeResponse,
+  LastReportsResponse,
+  ListResponse,
+  RestoreResponse,
+} from "../messages";
+import type { Freeze, RestoreReport } from "../types";
 
 const freezeButton = document.getElementById("freeze") as HTMLButtonElement;
 const statusEl = document.getElementById("status") as HTMLParagraphElement;
@@ -73,6 +78,41 @@ function renderRow(freeze: Freeze): HTMLLIElement {
   return row;
 }
 
+/**
+ * A restore that quietly half-worked is worse than one that failed loudly, so
+ * say what actually came back the last time.
+ */
+function summariseReport(report: RestoreReport): string {
+  const parts: Array<[string, [number, number]]> = [
+    ["scroll", report.scrolls],
+    ["fields", report.fields],
+    ["media", report.media],
+    ["highlight", report.selection],
+  ];
+  const restored = parts.reduce((n, [, [got]]) => n + got, 0);
+  const total = parts.reduce((n, [, [, all]]) => n + all, 0);
+  if (!total) return "";
+
+  const missed = parts.filter(([, [got, all]]) => all > 0 && got < all).map(([name]) => name);
+  const host = (() => {
+    try { return new URL(report.url).hostname.replace(/^www\./, ""); } catch { return ""; }
+  })();
+
+  if (!missed.length) return `Last restore: everything came back on ${host}.`;
+  if (report.aborted) return `Last restore on ${host}: ${restored}/${total} - you took over.`;
+  return `Last restore on ${host}: ${restored}/${total}, missed ${missed.join(", ")}.`;
+}
+
+async function showLastReport(): Promise<void> {
+  const { reports }: LastReportsResponse =
+    await chrome.runtime.sendMessage({ type: "CF_LAST_REPORTS" });
+  const latest = reports[0];
+  if (latest) {
+    const line = summariseReport(latest);
+    if (line) setStatus(line);
+  }
+}
+
 async function refresh(): Promise<void> {
   const { freezes }: ListResponse = await chrome.runtime.sendMessage({ type: "CF_LIST_FREEZES" });
   listEl.replaceChildren(...freezes.map(renderRow));
@@ -111,3 +151,4 @@ freezeButton.addEventListener("click", async () => {
 });
 
 void refresh();
+void showLastReport();

@@ -209,7 +209,7 @@ export function captureMedia(): MediaState[] {
   return out;
 }
 
-export function captureSelection(): SelectionSnapshot | null {
+function readSelection(): SelectionSnapshot | null {
   const sel = window.getSelection();
   if (!sel || sel.rangeCount === 0 || sel.isCollapsed) return null;
   const text = sel.toString().replace(/\s+/g, " ").trim();
@@ -221,7 +221,45 @@ export function captureSelection(): SelectionSnapshot | null {
       ? (node as Element)
       : (node?.parentElement ?? null);
 
-  return { text: text.slice(0, MAX_SELECTION_CHARS), ref: el ? describe(el) : null };
+  return {
+    text: text.slice(0, MAX_SELECTION_CHARS),
+    ref: el ? describe(el) : null,
+    editable: Boolean(el?.closest('[contenteditable=""], [contenteditable="true"]')),
+  };
+}
+
+let lastSelection: SelectionSnapshot | null = null;
+let trackerInstalled = false;
+
+/**
+ * Clicking the extension icon takes focus out of the page, and inside a
+ * contenteditable that is enough to collapse the selection - so by the time
+ * capture runs, the thing the user wanted remembered is already gone. This is
+ * why the Gmail highlight came back empty. Remember the last real selection as
+ * it happens, and fall back to it.
+ */
+export function installSelectionTracker(): void {
+  if (trackerInstalled) return;
+  trackerInstalled = true;
+  document.addEventListener(
+    "selectionchange",
+    () => {
+      const snapshot = readSelection();
+      if (snapshot) lastSelection = snapshot;
+    },
+    { passive: true },
+  );
+}
+
+export function captureSelection(): SelectionSnapshot | null {
+  const live = readSelection();
+  if (!live && !trackerInstalled) {
+    console.warn(
+      "[ContextFreeze] installSelectionTracker() was never called, so a " +
+        "selection collapsed before capture cannot be recovered.",
+    );
+  }
+  return live ?? lastSelection;
 }
 
 export function capturePage(): PageContext {

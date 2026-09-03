@@ -1,5 +1,5 @@
 import type { CaptureResponse, ContentReadyResponse, Message } from "../messages";
-import { capturePage } from "./capture";
+import { capturePage, installSelectionTracker } from "./capture";
 import { restorePage } from "./restore";
 
 declare global {
@@ -15,13 +15,19 @@ declare global {
 if (!window.__contextFreezeLoaded && window.top === window) {
   window.__contextFreezeLoaded = true;
 
+  // Must run immediately, not at capture time: opening the extension popup
+  // takes focus off the page, which collapses a selection inside an editor
+  // before capture ever gets to look at it.
+  installSelectionTracker();
+
   let restoring = false;
 
   async function runRestore(context: Parameters<typeof restorePage>[0]): Promise<void> {
     if (restoring) return;
     restoring = true;
     try {
-      await restorePage(context);
+      const report = await restorePage(context);
+      void chrome.runtime.sendMessage({ type: "CF_RESTORE_REPORT", report }).catch(() => {});
     } finally {
       restoring = false;
     }
@@ -30,7 +36,15 @@ if (!window.__contextFreezeLoaded && window.top === window) {
   chrome.runtime.onMessage.addListener((message: Message, _sender, sendResponse) => {
     if (message.type === "CF_CAPTURE") {
       try {
-        sendResponse({ ok: true, context: capturePage() } satisfies CaptureResponse);
+        const context = capturePage();
+        console.debug("[ContextFreeze] captured", {
+          scrolls: context.scrolls.length,
+          fields: context.fields.length,
+          media: context.media.length,
+          highlight: context.selection ? context.selection.text.slice(0, 40) : null,
+          editable: context.selection?.editable ?? null,
+        });
+        sendResponse({ ok: true, context } satisfies CaptureResponse);
       } catch (error) {
         sendResponse({ ok: false, error: String(error) } satisfies CaptureResponse);
       }

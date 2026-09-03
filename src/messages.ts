@@ -9,6 +9,10 @@ export interface RenameFreezeMsg { type: "CF_RENAME_FREEZE"; id: string; name: s
 
 /** content -> background */
 export interface ContentReadyMsg { type: "CF_CONTENT_READY"; url: string }
+export interface RestoreReportMsg { type: "CF_RESTORE_REPORT"; report: RestoreReport }
+
+/** popup -> background */
+export interface LastReportsMsg { type: "CF_LAST_REPORTS" }
 
 /** background -> content */
 export interface CaptureMsg { type: "CF_CAPTURE" }
@@ -21,6 +25,8 @@ export type Message =
   | DeleteFreezeMsg
   | RenameFreezeMsg
   | ContentReadyMsg
+  | RestoreReportMsg
+  | LastReportsMsg
   | CaptureMsg
   | RestoreMsg;
 
@@ -40,4 +46,4 @@ export type RestoreResponse =
   | { ok: true; opened: number; skipped: number }
   | { ok: false; error: string };
 
-export type RestoreDoneResponse = { ok: true; report: RestoreReport };
+export type LastReportsResponse = { reports: RestoreReport[] };

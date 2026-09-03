@@ -10,8 +10,12 @@ import { RESUME_REWIND_SECONDS } from "../constants";
 import { resolve, textOf } from "./element-path";
 import { findTextRange } from "./text-range";
 
-/** Give up after this long. A page that has not rendered by now is not going to. */
-const MAX_WAIT_MS = 15_000;
+/**
+ * Give up after this long. Generous, because a heavy SPA restoring its own state
+ * (Gmail reopening a draft compose) can take many seconds to put the text back,
+ * and the loop costs one cheap sweep a second once it has backed off.
+ */
+const MAX_WAIT_MS = 30_000;
 /**
  * For the first few seconds we insist on the anchor and refuse the raw pixel
  * fallback. Otherwise the fallback always wins the race - the document is tall
@@ -36,6 +40,10 @@ const MEDIA_DRIFT_TOLERANCE_S = 5;
 
 const HIGHLIGHT_NAME = "contextfreeze";
 const HIGHLIGHT_STYLE_ID = "contextfreeze-highlight-style";
+/** How long to keep putting a caret selection back while an SPA settles. */
+const SELECTION_GUARD_MS = 8_000;
+const SELECTION_GUARD_INTERVAL_MS = 500;
+const MAX_SELECTION_CORRECTIONS = 8;
 
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
@@ -284,32 +292,103 @@ function paintHighlight(range: Range): boolean {
   }
   registry.set(HIGHLIGHT_NAME, new ctor(range));
 
-  // Step aside as soon as the user highlights something of their own. Not
-  // { once: true }: collapsed selection changes fire constantly (restoring a
-  // form field is enough) and would eat the listener before it ever mattered.
+  // Step aside as soon as the USER highlights something of their own.
+  //
+  // Two traps here. Not { once: true }: collapsed selection changes fire
+  // constantly (restoring a form field is enough) and would eat the listener
+  // before it ever mattered. And not on any non-collapsed selection either:
+  // plenty of pages select their own text programmatically while booting, and
+  // that must not count - so wait for a real gesture first.
+  let userActed = false;
+  const noteGesture = () => { userActed = true; };
+  const gestureOptions = { capture: true, passive: true } as const;
+  document.addEventListener("pointerdown", noteGesture, gestureOptions);
+  document.addEventListener("keydown", noteGesture, gestureOptions);
+
   const onSelectionChange = () => {
+    if (!userActed) return;
     const selection = window.getSelection();
     if (selection && !selection.isCollapsed) {
       registry.delete(HIGHLIGHT_NAME);
       document.removeEventListener("selectionchange", onSelectionChange);
+      document.removeEventListener("pointerdown", noteGesture, { capture: true });
+      document.removeEventListener("keydown", noteGesture, { capture: true });
     }
   };
   document.addEventListener("selectionchange", onSelectionChange);
   return true;
 }
 
-function applySelection(snapshot: SelectionSnapshot, hasScrollToRestore: boolean): boolean {
+function editableHost(node: Node | null): HTMLElement | null {
+  const el =
+    node && node.nodeType === Node.ELEMENT_NODE
+      ? (node as Element)
+      : (node?.parentElement ?? null);
+  const host = el?.closest<HTMLElement>('[contenteditable=""], [contenteditable="true"]');
+  return host?.isContentEditable ? host : null;
+}
+
+function selectRange(range: Range): boolean {
+  const selection = window.getSelection();
+  if (!selection) return false;
+  selection.removeAllRanges();
+  selection.addRange(range);
+  return true;
+}
+
+/**
+ * An SPA keeps meddling after we are done: Gmail focuses the compose box, moves
+ * the caret to the end and collapses whatever we set. So a selection inside an
+ * editor has to be re-asserted for a few seconds - bounded, and dropped the
+ * moment the user does anything.
+ */
+function guardSelection(
+  host: HTMLElement,
+  snapshot: SelectionSnapshot,
+  isAborted: () => boolean,
+): void {
+  const deadline = Date.now() + SELECTION_GUARD_MS;
+  let corrections = 0;
+
+  const timer = setInterval(() => {
+    if (isAborted() || !host.isConnected || Date.now() > deadline ||
+        corrections >= MAX_SELECTION_CORRECTIONS) {
+      clearInterval(timer);
+      return;
+    }
+    const current = window.getSelection();
+    if (current && !current.isCollapsed && current.toString().includes(snapshot.text.slice(0, 20))) {
+      return; // still ours, nothing to do
+    }
+    const range = findTextRange(host, snapshot.text);
+    if (!range) return;
+    corrections++;
+    host.focus({ preventScroll: true });
+    selectRange(range);
+  }, SELECTION_GUARD_INTERVAL_MS);
+}
+
+function applySelection(
+  snapshot: SelectionSnapshot,
+  hasScrollToRestore: boolean,
+  isAborted: () => boolean,
+): boolean {
   const scope = (snapshot.ref ? resolve(snapshot.ref) : null) ?? document.body;
   if (!scope) return false;
 
   const range = findTextRange(scope, snapshot.text);
   if (!range) return false;
 
-  if (!paintHighlight(range)) {
-    const selection = window.getSelection();
-    if (!selection) return false;
-    selection.removeAllRanges();
-    selection.addRange(range);
+  // Inside an editor you are coming back to *edit*, so a real focused selection
+  // is what you want. Everywhere else a painted highlight is better, because a
+  // native selection is cleared by the first click.
+  const host = snapshot.editable ? editableHost(range.startContainer) : null;
+  if (host) {
+    host.focus({ preventScroll: true });
+    if (!selectRange(range)) return false;
+    guardSelection(host, snapshot, isAborted);
+  } else if (!paintHighlight(range)) {
+    if (!selectRange(range)) return false;
   }
 
   // Nothing else is going to move the viewport, so bring the mark into view.
@@ -381,7 +460,7 @@ export async function restorePage(context: PageContext): Promise<RestoreReport> 
         done.scrolls++;
       }
     }
-    if (selection && applySelection(selection, hasScrollToRestore)) selection = null;
+    if (selection && applySelection(selection, hasScrollToRestore, isAborted)) selection = null;
   };
 
   let delay = FIRST_DELAY_MS;
@@ -415,11 +494,32 @@ export async function restorePage(context: PageContext): Promise<RestoreReport> 
     window.removeEventListener(name, abort, { capture: true });
   }
 
-  return {
+  const report: RestoreReport = {
     url: location.href,
     scrolls: [done.scrolls, totals.scrolls],
     fields: [done.fields, totals.fields],
     media: [done.media, totals.media],
+    selection: [context.selection && !selection ? 1 : 0, context.selection ? 1 : 0],
+    aborted,
     elapsedMs: Date.now() - started,
   };
+
+  // Deliberately loud. When something does not come back, the first question is
+  // always "was it not captured, or not restored?" - and this answers it.
+  console.debug("[ContextFreeze] restored", {
+    scroll: report.scrolls.join("/"),
+    fields: report.fields.join("/"),
+    media: report.media.join("/"),
+    highlight: report.selection.join("/"),
+    aborted,
+    ms: report.elapsedMs,
+    unresolved: {
+      scrolls: pendingScrolls.map((a) => a.anchor?.id ?? a.anchor?.path ?? "(pixel only)"),
+      fields: pendingFields.map((f) => f.ref.id ?? f.ref.name ?? f.kind),
+      media: pendingMedia.map((m) => m.ref.id ?? `${m.tag}[${m.index}]`),
+      highlight: selection ? selection.text.slice(0, 40) : null,
+    },
+  });
+
+  return report;
 }

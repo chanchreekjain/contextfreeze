@@ -88,6 +88,10 @@ ${sideLines}
   <div id="rich" contenteditable="true"></div>
 </form>
 
+<!-- Stands in for a Gmail-style compose box: its content arrives after load,
+     and the app then focuses it and slams the caret to the end - twice. -->
+<div id="editor" contenteditable="true"></div>
+
 <audio id="clip" src="clip.wav" preload="metadata" controls></audio>
 
 <!-- Stands in for a real site player: it has no id, it re-parents itself into a
@@ -124,6 +128,27 @@ ${paragraphs}
   }, 300);
   setTimeout(() => { document.querySelector('.stream').currentTime = 0; }, 700);
   setTimeout(() => { document.querySelector('.stream').currentTime = 0; }, 1500);
+
+  // The compose box fills in late, then the app grabs focus and collapses the
+  // caret to the end - exactly what wipes a restored selection in Gmail.
+  setTimeout(() => {
+    document.getElementById('editor').textContent =
+      'Draft body: the quarterly numbers look wrong in section four, ' +
+      'please double check them before we send this out.';
+  }, 1200);
+  function meddle() {
+    const ed = document.getElementById('editor');
+    if (!ed.textContent) return;
+    ed.focus();
+    const range = document.createRange();
+    range.selectNodeContents(ed);
+    range.collapse(false);
+    const sel = getSelection();
+    sel.removeAllRanges();
+    sel.addRange(range);
+  }
+  setTimeout(meddle, 1600);
+  setTimeout(meddle, 2400);
 </script>
 </body>
 </html>

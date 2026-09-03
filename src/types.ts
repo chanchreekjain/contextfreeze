@@ -70,6 +70,12 @@ export interface MediaState {
 export interface SelectionSnapshot {
   text: string;
   ref: ElementRef | null;
+  /**
+   * True when the text was selected inside a contenteditable (a compose box, a
+   * rich editor). Those restore as a real focused selection - you are coming
+   * back to edit. Everything else restores as a painted highlight.
+   */
+  editable: boolean;
 }
 
 export interface PageContext {
@@ -108,5 +114,8 @@ export interface RestoreReport {
   scrolls: [restored: number, total: number];
   fields: [restored: number, total: number];
   media: [restored: number, total: number];
+  selection: [restored: number, total: number];
+  /** True when the user took over and we stood down before finishing. */
+  aborted: boolean;
   elapsedMs: number;
 }
