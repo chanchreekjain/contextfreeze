@@ -45,6 +45,21 @@ const write = (name, width, height, shade, samples = 4) => {
   });
 }
 
+/* ------------------------------------------------- edge store logo (300x300) */
+/**
+ * Microsoft Edge asks for a 1:1 logo at 300x300 and renders it as-is, so this
+ * one is full bleed. Chrome's 128 wants transparent padding. Same mark, two
+ * different frames - shipping one where the other belongs looks subtly wrong.
+ */
+{
+  const SIZE = 300;
+  write("logo-store-300.png", SIZE, SIZE, (x, y) => {
+    if (!insideRoundedRect(x, y, 0, 0, SIZE, SIZE, SIZE * CORNER_RADIUS)) return null;
+    if (insidePolygon(x, y, markPoints(0, 0, SIZE))) return [...PAPER, 255];
+    return [...mix(GRADIENT_FROM, GRADIENT_TO, (x / SIZE + y / SIZE) / 2), 255];
+  });
+}
+
 /* ------------------------------------------------------------- promo tiles */
 
 /** Text lines, one of them marked, with the bookmark sitting on the marked one. */
