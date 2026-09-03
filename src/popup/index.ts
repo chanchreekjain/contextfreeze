@@ -114,6 +114,7 @@ diagnoseButton.addEventListener("click", async () => {
   }
   setStatus("");
   reportEl.textContent = result.report;
+  reportEl.classList.remove("wrap");
   reportPanel.hidden = false;
   reportEl.focus();
 });
@@ -319,6 +320,7 @@ async function showLastReport(): Promise<void> {
       (latest.unrestored.length === 1 ? "" : "s");
     recoverButton.onclick = () => {
       reportEl.textContent = recoverySheet(latest);
+      reportEl.classList.add("wrap");
       reportPanel.hidden = false;
       reportEl.focus();
     };
@@ -327,7 +329,13 @@ async function showLastReport(): Promise<void> {
 
 function describeCheckpoint(checkpoint: Checkpoint): string {
   if (checkpoint.kind === "media") {
+    const at = checkpoint.media ? formatClock(checkpoint.media.currentTime) : null;
     const total = checkpoint.media?.duration;
+    // Once you name a flag, the label no longer says when it is - so the meta
+    // line has to. Unnamed flags are already labelled with the time, and
+    // repeating it there would just be noise.
+    const named = at !== null && checkpoint.label !== at;
+    if (named && at) return total ? `${at} · of ${formatClock(total)}` : at;
     return total ? `video · of ${formatClock(total)}` : "video";
   }
   const when = new Date(checkpoint.createdAt).toLocaleString(undefined, {

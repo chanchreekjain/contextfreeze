@@ -278,3 +278,10 @@ h1 {
   border-color: var(--accent);
   color: var(--accent);
 }
+
+/* Recovered text is prose someone wrote - it wraps. A diagnostic report has
+   long element paths in it and must not. */
+.report.wrap {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
