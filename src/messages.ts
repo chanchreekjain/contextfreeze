@@ -26,6 +26,8 @@ export interface ListCheckpointsMsg { type: "CF_LIST_CHECKPOINTS"; url: string }
 export interface JumpCheckpointMsg { type: "CF_JUMP_CHECKPOINT"; tabId: number; id: string }
 export interface DeleteCheckpointMsg { type: "CF_DELETE_CHECKPOINT"; id: string }
 export interface RenameCheckpointMsg { type: "CF_RENAME_CHECKPOINT"; id: string; label: string }
+export interface AllCheckpointsMsg { type: "CF_ALL_CHECKPOINTS" }
+export interface ImportCheckpointsMsg { type: "CF_IMPORT_CHECKPOINTS"; text: string }
 
 /** content -> background */
 export interface AutosaveMsg { type: "CF_AUTOSAVE"; draft: CheckpointDraft }
@@ -62,6 +64,8 @@ export type Message =
   | JumpCheckpointMsg
   | DeleteCheckpointMsg
   | RenameCheckpointMsg
+  | AllCheckpointsMsg
+  | ImportCheckpointsMsg
   | AutosaveMsg
   | DropMsg
   | JumpMsg
@@ -87,6 +91,9 @@ export type LastReportsResponse = { reports: RestoreReport[] };
 
 export type DropResponse = { ok: true; draft: CheckpointDraft } | { ok: false; error: string };
 export type CheckpointListResponse = { checkpoints: Checkpoint[] };
+export type ImportResponse =
+  | { ok: true; added: number; skipped: number }
+  | { ok: false; error: string };
 export type SimpleResponse = { ok: true } | { ok: false; error: string };
 /** addCheckpoint hands the new id back so the popup can offer to rename it. */
 export type AddCheckpointResponse =

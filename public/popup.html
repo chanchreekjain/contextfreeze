@@ -8,7 +8,7 @@
   <body>
     <header class="head">
       <div class="brand">
-        <span class="mark" aria-hidden="true"></span>
+        <img class="mark" src="icons/mark.svg" alt="" width="16" height="16">
         <h1>ContextFreeze</h1>
       </div>
       <button id="freeze" class="primary" type="button">Freeze this window</button>
@@ -34,6 +34,13 @@
         Nothing frozen yet. Hit the button above and ContextFreeze will remember
         where you were in every tab of this window.
       </p>
+      <footer class="footer">
+        <button id="copy" class="link" type="button">Copy</button>
+        <button id="save-md" class="link" type="button">Save .md</button>
+        <button id="save-json" class="link" type="button">Save .json</button>
+        <button id="import" class="link" type="button">Import</button>
+        <input id="import-file" type="file" accept="application/json,.json" hidden>
+      </footer>
     </main>
 
     <template id="checkpoint-template">

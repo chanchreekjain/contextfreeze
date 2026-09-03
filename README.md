@@ -112,6 +112,21 @@ the others. So `pageKey()` normalises: every YouTube URL for a video — `?t=`
 variants and `youtu.be` short links included — keys to `youtube:<id>`, and
 elsewhere tracking parameters and hashes are stripped.
 
+### Getting them out again
+
+Extension storage is only as durable as a Chrome profile. Anything worth keeping
+for years has to be able to leave, so the popup footer has **Copy**,
+**Save .md**, **Save .json** and **Import**.
+
+The Markdown export is meant to be readable in Notepad in five years with no
+software at all — grouped by page, with the plain URL, the text you had marked,
+and CRLF line endings. Video flags export as ordinary timestamped links
+(`watch?v=...&t=725s`), so they still work when this extension is long gone.
+
+The JSON export is lossless and re-importable. Import **merges** rather than
+replaces, so restoring a backup never deletes the checkpoints you have made
+since — and it refuses a file it does not understand rather than importing junk.
+
 ---
 
 ## Where it actually earns its keep
@@ -191,6 +206,7 @@ once from Windows before `npm run build` there.
 src/
 ├── types.ts               the context layer, documented field by field
 ├── checkpoints.ts         checkpoint storage and page keying
+├── export.ts              markdown and JSON serialisation, and a strict parser
 ├── messages.ts            typed popup <-> worker <-> content protocol
 ├── storage.ts             freeze CRUD + the pending-restore handoff
 ├── site-adapters.ts       per-site resume URLs (YouTube's ?t=)
@@ -233,6 +249,9 @@ password did not, and that the media did not auto-play.
 id that re-parents itself after load *and* resets its playhead to zero twice
 while initialising. Plus the URL rewrite, exercised directly.
 
+`test/export.test.mjs` — the serialisers, including that a corrupt bundle keeps
+its good entries and that junk is refused outright. Pure functions, no browser.
+
 `test/checkpoints.test.mjs` — marking a spot and jumping back to it, flagging a
 moment and landing on the exact second, and the page-keying rules that keep a
 video's flags together.
@@ -264,6 +283,19 @@ Set `CF_CHROME` to an existing Chromium binary to skip Playwright's download.
 - [ ] Restore into the current window instead of always opening a new one
 - [ ] Export/import a freeze as JSON
 - [ ] Fuzzy anchor matching, so a lightly-edited page still restores
+
+## The icon
+
+`node tools/make-icons.mjs` regenerates every size from a five-point polygon —
+pure Node, no ImageMagick, no headless browser, since a build that needs those
+to make a 16px PNG is a build that breaks on someone else's machine. It writes
+the PNGs by hand: supersampled 4x, premultiplied when downsampling so the
+rounded corners do not fringe, and zlib for the IDAT chunk.
+
+The mark is a bookmark with a sheared top. At 16px the silhouette is all that
+survives, so it carries the whole identity: the deep notch says bookmark, the
+slant keeps it from being every other bookmark icon ever drawn. An earlier
+version had a pointed top and read as an up arrow.
 
 ## Licence
 

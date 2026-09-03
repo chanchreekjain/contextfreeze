@@ -11,33 +11,40 @@ import type { FrozenTab } from "./types";
  * This rewrites the URL a restore opens. The content script still does its own
  * seek as a backstop, and the two agree because both rewind by the same amount.
  */
-export function resumeUrl(tab: FrozenTab): string {
-  const media = tab.context?.media?.[0];
-  if (!media || !Number.isFinite(media.currentTime)) return tab.url;
-
-  const seconds = Math.max(0, Math.floor(media.currentTime - RESUME_REWIND_SECONDS));
-  if (seconds < 1) return tab.url;
+/**
+ * A URL that opens the page already at `seconds`, or null if the site has no
+ * such mechanism and we would just be inventing a query parameter.
+ */
+export function timestampedUrl(rawUrl: string, seconds: number): string | null {
+  if (!Number.isFinite(seconds) || seconds < 1) return null;
 
   let url: URL;
   try {
-    url = new URL(tab.url);
+    url = new URL(rawUrl);
   } catch {
-    return tab.url;
+    return null;
   }
 
+  const whole = Math.floor(seconds);
   const host = url.hostname.replace(/^www\./, "");
 
   // youtube.com/watch?v=... and the m. mobile host both honour ?t=90s
   if ((host === "youtube.com" || host === "m.youtube.com") && url.pathname === "/watch") {
-    url.searchParams.set("t", seconds + "s");
+    url.searchParams.set("t", whole + "s");
     return url.toString();
   }
 
   // youtu.be/<id> short links take a bare seconds value
   if (host === "youtu.be") {
-    url.searchParams.set("t", String(seconds));
+    url.searchParams.set("t", String(whole));
     return url.toString();
   }
 
-  return tab.url;
+  return null;
+}
+
+export function resumeUrl(tab: FrozenTab): string {
+  const media = tab.context?.media?.[0];
+  if (!media) return tab.url;
+  return timestampedUrl(tab.url, media.currentTime - RESUME_REWIND_SECONDS) ?? tab.url;
 }

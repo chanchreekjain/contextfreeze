@@ -26,6 +26,7 @@ import {
   renameCheckpoint,
   saveCheckpoint,
 } from "../checkpoints";
+import { parseBundle } from "../export";
 import { resumeUrl } from "../site-adapters";
 import type { Checkpoint, CheckpointKind, Freeze, FrozenTab, RestoreReport } from "../types";
 
@@ -313,6 +314,24 @@ chrome.runtime.onMessage.addListener((message: Message, sender, sendResponse) =>
       case "CF_RENAME_CHECKPOINT":
         await renameCheckpoint(message.id, message.label);
         return sendResponse({ ok: true });
+      case "CF_ALL_CHECKPOINTS":
+        return sendResponse({ checkpoints: await allCheckpoints() });
+      case "CF_IMPORT_CHECKPOINTS": {
+        const parsed = parseBundle(message.text);
+        if (!parsed.ok) return sendResponse(parsed);
+
+        // Merge, never replace: importing a backup must not delete the
+        // checkpoints made since it was taken.
+        const existing = await allCheckpoints();
+        const known = new Set(existing.map((c) => c.id));
+        const fresh = parsed.checkpoints.filter((c) => !known.has(c.id));
+        for (const checkpoint of fresh) await saveCheckpoint(checkpoint);
+        return sendResponse({
+          ok: true,
+          added: fresh.length,
+          skipped: parsed.checkpoints.length - fresh.length,
+        });
+      }
       case "CF_AUTOSAVE": {
         // Only pages the user has explicitly marked get a running "Last
         // position". Otherwise this would quietly become a browsing history.

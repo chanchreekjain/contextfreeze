@@ -4,9 +4,11 @@ import type {
   FreezeResponse,
   LastReportsResponse,
   ListResponse,
+  ImportResponse,
   RestoreResponse,
   SimpleResponse,
 } from "../messages";
+import { toBundle, toMarkdown } from "../export";
 import type { Checkpoint, CheckpointKind, Freeze, RestoreReport } from "../types";
 
 const freezeButton = document.getElementById("freeze") as HTMLButtonElement;
@@ -21,8 +23,87 @@ const checkpointList = document.getElementById("checkpoints") as HTMLUListElemen
 const noCheckpoints = document.getElementById("no-checkpoints") as HTMLParagraphElement;
 const checkpointTemplate = document.getElementById("checkpoint-template") as HTMLTemplateElement;
 
+const copyButton = document.getElementById("copy") as HTMLButtonElement;
+const saveMdButton = document.getElementById("save-md") as HTMLButtonElement;
+const saveJsonButton = document.getElementById("save-json") as HTMLButtonElement;
+const importButton = document.getElementById("import") as HTMLButtonElement;
+const importInput = document.getElementById("import-file") as HTMLInputElement;
+
 /** The tab the popup was opened over. Every checkpoint action is relative to it. */
 let currentTab: chrome.tabs.Tab | null = null;
+
+/* ------------------------------------------------------------ export/import */
+
+async function everyCheckpoint(): Promise<Checkpoint[]> {
+  const { checkpoints }: CheckpointListResponse =
+    await chrome.runtime.sendMessage({ type: "CF_ALL_CHECKPOINTS" });
+  return checkpoints;
+}
+
+function fileStamp(): string {
+  const now = new Date();
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+}
+
+/**
+ * chrome.downloads rather than a synthetic <a download> click: some Chrome
+ * builds tear the popup down mid-click, and a download that silently does not
+ * happen is the worst possible outcome for a "keep this forever" feature.
+ */
+async function download(text: string, filename: string, type: string): Promise<void> {
+  const url = URL.createObjectURL(new Blob([text], { type }));
+  try {
+    await chrome.downloads.download({ url, filename, saveAs: true });
+  } finally {
+    // Give the download a moment to take hold of the blob before releasing it.
+    setTimeout(() => URL.revokeObjectURL(url), 30_000);
+  }
+}
+
+copyButton.addEventListener("click", async () => {
+  const checkpoints = await everyCheckpoint();
+  if (!checkpoints.length) return setStatus("Nothing to copy yet.");
+  await navigator.clipboard.writeText(toMarkdown(checkpoints));
+  setStatus(`Copied ${checkpoints.length} checkpoints. Paste anywhere.`);
+});
+
+saveMdButton.addEventListener("click", async () => {
+  const checkpoints = await everyCheckpoint();
+  if (!checkpoints.length) return setStatus("Nothing to export yet.");
+  await download(toMarkdown(checkpoints), `contextfreeze-${fileStamp()}.md`, "text/markdown");
+});
+
+saveJsonButton.addEventListener("click", async () => {
+  const checkpoints = await everyCheckpoint();
+  if (!checkpoints.length) return setStatus("Nothing to export yet.");
+  await download(
+    JSON.stringify(toBundle(checkpoints), null, 2),
+    `contextfreeze-${fileStamp()}.json`,
+    "application/json",
+  );
+});
+
+importButton.addEventListener("click", () => importInput.click());
+
+importInput.addEventListener("change", async () => {
+  const file = importInput.files?.[0];
+  if (!file) return;
+  importInput.value = "";
+
+  const result: ImportResponse = await chrome.runtime.sendMessage({
+    type: "CF_IMPORT_CHECKPOINTS",
+    text: await file.text(),
+  });
+
+  if (!result.ok) return setStatus(result.error);
+  setStatus(
+    result.added
+      ? `Imported ${result.added}${result.skipped ? `, ${result.skipped} already here` : ""}.`
+      : "Everything in that file was already here.",
+  );
+  await refreshCheckpoints();
+});
 
 function setStatus(text: string): void {
   statusEl.textContent = text;
