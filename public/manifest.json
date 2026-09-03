@@ -1,0 +1,29 @@
+{
+  "manifest_version": 3,
+  "name": "ContextFreeze",
+  "version": "0.1.0",
+  "description": "Save and restore your deep-work browser context - scroll position, form contents and video timestamps, not just URLs.",
+  "permissions": ["tabs", "tabGroups", "storage", "scripting"],
+  "host_permissions": ["<all_urls>"],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_title": "ContextFreeze",
+    "default_popup": "popup.html"
+  },
+  "content_scripts": [
+    {
+      "matches": ["http://*/*", "https://*/*"],
+      "js": ["content.js"],
+      "run_at": "document_idle",
+      "all_frames": false
+    }
+  ],
+  "commands": {
+    "freeze-window": {
+      "suggested_key": { "default": "Ctrl+Shift+F", "mac": "Command+Shift+F" },
+      "description": "Freeze the current window"
+    }
+  }
+}
