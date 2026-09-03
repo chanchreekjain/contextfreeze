@@ -33,6 +33,12 @@ export interface AutosaveMsg { type: "CF_AUTOSAVE"; draft: CheckpointDraft }
 /** background -> content */
 export interface DropMsg { type: "CF_DROP"; kind: CheckpointKind }
 export interface JumpMsg { type: "CF_JUMP"; checkpoint: Checkpoint }
+export interface NamePromptMsg {
+  type: "CF_NAME_PROMPT";
+  id: string;
+  defaultLabel: string;
+  kind: CheckpointKind;
+}
 
 export type CheckpointDraft = Omit<Checkpoint, "id" | "key">;
 
@@ -58,7 +64,8 @@ export type Message =
   | RenameCheckpointMsg
   | AutosaveMsg
   | DropMsg
-  | JumpMsg;
+  | JumpMsg
+  | NamePromptMsg;
 
 export type CaptureResponse =
   | { ok: true; context: PageContext }
@@ -81,3 +88,7 @@ export type LastReportsResponse = { reports: RestoreReport[] };
 export type DropResponse = { ok: true; draft: CheckpointDraft } | { ok: false; error: string };
 export type CheckpointListResponse = { checkpoints: Checkpoint[] };
 export type SimpleResponse = { ok: true } | { ok: false; error: string };
+/** addCheckpoint hands the new id back so the popup can offer to rename it. */
+export type AddCheckpointResponse =
+  | { ok: true; id: string; label: string }
+  | { ok: false; error: string };

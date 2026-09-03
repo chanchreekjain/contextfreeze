@@ -83,6 +83,11 @@ A freeze captures a whole window. A **checkpoint** captures one named place
 - **Flag this moment** (`Ctrl+Shift+Y`) drops a flag at the current second of a
   video or podcast, labelled `12:05`.
 - Many per page. Click **Jump** in the popup to go straight there.
+- **Name it as you drop it.** A checkpoint always arrives with a sensible label
+  already filled in, so naming stays optional: a keyboard-shortcut drop shows a
+  small in-page prompt (Enter to save, Escape to keep the default, and it
+  disappears on its own after 12s), and a drop from the popup goes straight into
+  renaming it in the list.
 - Jumping inside the page you are already on does **not** reload it. Only a tab
   that has navigated elsewhere gets navigated back, and the checkpoint is handed
   over through the same handshake a restore uses.
@@ -196,6 +201,7 @@ src/
 │   ├── capture.ts         reading the context layer off a live page
 │   ├── restore.ts         the retry loop (the hard part)
 │   ├── checkpoint.ts      dropping and jumping to a single marked place
+│   ├── namer.ts           the in-page "name this checkpoint" prompt
 │   └── text-range.ts      re-finding a highlight across text nodes
 └── popup/index.ts         the UI
 ```
@@ -230,6 +236,10 @@ while initialising. Plus the URL rewrite, exercised directly.
 `test/checkpoints.test.mjs` — marking a spot and jumping back to it, flagging a
 moment and landing on the exact second, and the page-keying rules that keep a
 video's flags together.
+
+`test/namer.test.mjs` — the naming prompt, and the part that actually matters:
+that our own overlay stays invisible to the capture layer, so an input floating
+in the page is never captured as a form field or chosen as a scroll anchor.
 
 `test/edge-cases.test.mjs` — the other failure modes:
 

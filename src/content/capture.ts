@@ -61,6 +61,7 @@ function anchorAtPoint(
     if (!(el instanceof HTMLElement)) continue;
     if (container && !container.contains(el)) continue;
     if (el === document.body || el === document.documentElement) continue;
+    if (el.hasAttribute("data-contextfreeze")) continue; // our own overlay
     if (!textOf(el, 10)) continue;
     // A node with many element children is usually a wrapper, not a line of text.
     if (el.childElementCount > 3) continue;

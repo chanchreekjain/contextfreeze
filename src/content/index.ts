@@ -1,6 +1,7 @@
 import type { CaptureResponse, ContentReadyResponse, Message } from "../messages";
 import { capturePage, installSelectionTracker } from "./capture";
 import { dropCheckpoint, jumpTo } from "./checkpoint";
+import { askForName } from "./namer";
 import { restorePage } from "./restore";
 
 declare global {
@@ -59,6 +60,17 @@ if (!window.__contextFreezeLoaded && window.top === window) {
           ? { ok: true, draft }
           : { ok: false, error: "Nothing to mark here - no video or audio on this page." },
       );
+      return true;
+    }
+
+    if (message.type === "CF_NAME_PROMPT") {
+      const { id, defaultLabel, kind } = message;
+      void askForName(defaultLabel, kind).then((label) => {
+        if (label) {
+          void chrome.runtime.sendMessage({ type: "CF_RENAME_CHECKPOINT", id, label }).catch(() => {});
+        }
+      });
+      sendResponse({ ok: true });
       return true;
     }
 

@@ -10,6 +10,7 @@
  */
 import { capturePage, installSelectionTracker } from "../src/content/capture";
 import { dropCheckpoint, jumpTo } from "../src/content/checkpoint";
+import { askForName } from "../src/content/namer";
 import { restorePage } from "../src/content/restore";
 
 installSelectionTracker();
@@ -19,4 +20,5 @@ installSelectionTracker();
   restorePage,
   dropCheckpoint,
   jumpTo,
+  askForName,
 };

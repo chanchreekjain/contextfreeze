@@ -1,4 +1,5 @@
 import type {
+  AddCheckpointResponse,
   CheckpointListResponse,
   FreezeResponse,
   LastReportsResponse,
@@ -25,6 +26,47 @@ let currentTab: chrome.tabs.Tab | null = null;
 
 function setStatus(text: string): void {
   statusEl.textContent = text;
+}
+
+/**
+ * Rename in place rather than through window.prompt(). A prompt inside an
+ * extension popup is a coin toss - some Chrome builds dismiss the popup along
+ * with the dialog, taking the thing you were renaming with it.
+ */
+function beginEdit(
+  nameButton: HTMLButtonElement,
+  current: string,
+  commit: (label: string) => Promise<void>,
+): void {
+  const input = document.createElement("input");
+  input.type = "text";
+  input.className = "name-input";
+  input.value = current;
+  input.spellcheck = false;
+
+  let settled = false;
+  const finish = async (label: string | null) => {
+    if (settled) return;
+    settled = true;
+    input.replaceWith(nameButton);
+    const trimmed = label?.trim();
+    if (trimmed && trimmed !== current) await commit(trimmed);
+  };
+
+  input.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      void finish(input.value);
+    } else if (event.key === "Escape") {
+      event.preventDefault();
+      void finish(null);
+    }
+  });
+  input.addEventListener("blur", () => void finish(input.value));
+
+  nameButton.replaceWith(input);
+  input.focus();
+  input.select();
 }
 
 function describeFreeze(freeze: Freeze): string {
@@ -54,14 +96,12 @@ function renderRow(freeze: Freeze): HTMLLIElement {
   nameButton.title = freeze.name;
   meta.textContent = describeFreeze(freeze);
 
-  nameButton.addEventListener("click", async () => {
-    const next = window.prompt("Rename this freeze", freeze.name);
-    if (next === null) return;
-    const trimmed = next.trim();
-    if (!trimmed || trimmed === freeze.name) return;
-    await chrome.runtime.sendMessage({ type: "CF_RENAME_FREEZE", id: freeze.id, name: trimmed });
-    await refresh();
-  });
+  nameButton.addEventListener("click", () =>
+    beginEdit(nameButton, freeze.name, async (name) => {
+      await chrome.runtime.sendMessage({ type: "CF_RENAME_FREEZE", id: freeze.id, name });
+      await refresh();
+    }),
+  );
 
   restoreButton.addEventListener("click", async () => {
     restoreButton.disabled = true;
@@ -143,7 +183,7 @@ function formatClock(seconds: number): string {
   return h ? `${h}:${pad(m)}:${pad(total % 60)}` : `${m}:${pad(total % 60)}`;
 }
 
-function renderCheckpoint(checkpoint: Checkpoint): HTMLLIElement {
+function renderCheckpoint(checkpoint: Checkpoint, editing: boolean): HTMLLIElement {
   const fragment = checkpointTemplate.content.cloneNode(true) as DocumentFragment;
   const row = fragment.querySelector(".checkpoint") as HTMLLIElement;
   const badge = row.querySelector(".badge") as HTMLElement;
@@ -158,16 +198,16 @@ function renderCheckpoint(checkpoint: Checkpoint): HTMLLIElement {
   name.title = checkpoint.label;
   meta.textContent = describeCheckpoint(checkpoint);
 
-  name.addEventListener("click", async () => {
-    const next = window.prompt("Rename this checkpoint", checkpoint.label);
-    if (next === null) return;
-    const trimmed = next.trim();
-    if (!trimmed || trimmed === checkpoint.label) return;
-    await chrome.runtime.sendMessage({
-      type: "CF_RENAME_CHECKPOINT", id: checkpoint.id, label: trimmed,
+  const rename = () =>
+    beginEdit(name, checkpoint.label, async (label) => {
+      await chrome.runtime.sendMessage({
+        type: "CF_RENAME_CHECKPOINT", id: checkpoint.id, label,
+      });
+      await refreshCheckpoints();
     });
-    await refreshCheckpoints();
-  });
+
+  name.addEventListener("click", rename);
+  if (editing) queueMicrotask(rename);
 
   jump.addEventListener("click", async () => {
     if (currentTab?.id == null) return;
@@ -191,7 +231,7 @@ function renderCheckpoint(checkpoint: Checkpoint): HTMLLIElement {
   return row;
 }
 
-async function refreshCheckpoints(): Promise<void> {
+async function refreshCheckpoints(editId?: string): Promise<void> {
   if (!currentTab?.url || !/^https?:/.test(currentTab.url)) {
     hereSection.hidden = true;
     return;
@@ -201,19 +241,28 @@ async function refreshCheckpoints(): Promise<void> {
   const { checkpoints }: CheckpointListResponse = await chrome.runtime.sendMessage({
     type: "CF_LIST_CHECKPOINTS", url: currentTab.url,
   });
-  checkpointList.replaceChildren(...checkpoints.map(renderCheckpoint));
+  checkpointList.replaceChildren(
+    ...checkpoints.map((c) => renderCheckpoint(c, c.id === editId)),
+  );
   noCheckpoints.hidden = checkpoints.length > 0;
 }
 
 async function mark(kind: CheckpointKind, button: HTMLButtonElement): Promise<void> {
   if (currentTab?.id == null) return;
   button.disabled = true;
-  const result: SimpleResponse = await chrome.runtime.sendMessage({
+  const result: AddCheckpointResponse = await chrome.runtime.sendMessage({
     type: "CF_ADD_CHECKPOINT", tabId: currentTab.id, kind,
   });
-  setStatus(result.ok ? "" : result.error);
   button.disabled = false;
-  await refreshCheckpoints();
+
+  if (!result.ok) {
+    setStatus(result.error);
+    return;
+  }
+  // Drop straight into renaming it, with the default already selected - type a
+  // name or press Escape and keep it.
+  setStatus("Saved. Type a name, or press Escape to keep it.");
+  await refreshCheckpoints(result.id);
 }
 
 markSpotButton.addEventListener("click", () => void mark("position", markSpotButton));

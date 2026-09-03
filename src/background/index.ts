@@ -1,5 +1,6 @@
 import type {
   CheckpointDraft,
+  AddCheckpointResponse,
   DropResponse,
   FreezeResponse,
   ListResponse,
@@ -200,7 +201,17 @@ async function restoreFreeze(id: string): Promise<RestoreResponse> {
   return { ok: true, opened: openable.length, skipped };
 }
 
-async function addCheckpoint(tabId: number, kind: CheckpointKind): Promise<SimpleResponse> {
+/**
+ * `promptForName` is for keyboard-shortcut drops, where there is no popup to
+ * type into: the content script shows a small in-page namer. Drops made from
+ * the popup skip it and rename inline in the list instead, which is less
+ * jarring than an overlay appearing behind the popup you are looking at.
+ */
+async function addCheckpoint(
+  tabId: number,
+  kind: CheckpointKind,
+  promptForName: boolean,
+): Promise<AddCheckpointResponse> {
   let draft: CheckpointDraft;
   try {
     const response: DropResponse = await chrome.tabs.sendMessage(tabId, { type: "CF_DROP", kind });
@@ -210,8 +221,21 @@ async function addCheckpoint(tabId: number, kind: CheckpointKind): Promise<Simpl
     return { ok: false, error: "Reload this page, then try again." };
   }
 
-  await saveCheckpoint({ ...draft, id: crypto.randomUUID(), key: pageKey(draft.url) });
-  return { ok: true };
+  const id = crypto.randomUUID();
+  await saveCheckpoint({ ...draft, id, key: pageKey(draft.url) });
+
+  if (promptForName) {
+    void chrome.tabs
+      .sendMessage(tabId, {
+        type: "CF_NAME_PROMPT",
+        id,
+        defaultLabel: draft.label,
+        kind,
+      })
+      .catch(() => {});
+  }
+
+  return { ok: true, id, label: draft.label };
 }
 
 /**
@@ -278,7 +302,7 @@ chrome.runtime.onMessage.addListener((message: Message, sender, sendResponse) =>
         return sendResponse({ reports: (data[REPORTS_KEY] as RestoreReport[] | undefined) ?? [] });
       }
       case "CF_ADD_CHECKPOINT":
-        return sendResponse(await addCheckpoint(message.tabId, message.kind));
+        return sendResponse(await addCheckpoint(message.tabId, message.kind, false));
       case "CF_LIST_CHECKPOINTS":
         return sendResponse({ checkpoints: await checkpointsForPage(message.url) });
       case "CF_JUMP_CHECKPOINT":
@@ -333,7 +357,7 @@ chrome.commands.onCommand.addListener((command) => {
     if (command === "drop-checkpoint" || command === "drop-flag") {
       const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
       if (tab?.id == null) return;
-      const result = await addCheckpoint(tab.id, command === "drop-flag" ? "media" : "position");
+      const result = await addCheckpoint(tab.id, command === "drop-flag" ? "media" : "position", true);
       await flashBadge(result.ok ? "+" : "!");
     }
   })();

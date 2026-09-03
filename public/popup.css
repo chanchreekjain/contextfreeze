@@ -207,3 +207,19 @@ h1 {
 .jump:hover { border-color: var(--accent); color: var(--accent); }
 
 #checkpoints { max-height: 200px; }
+
+.name-input {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 1px 4px;
+  margin: -2px -5px;
+  border: 1px solid var(--accent);
+  border-radius: 4px;
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+  font-weight: 600;
+}
+
+.name-input:focus { outline: none; }
