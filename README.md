@@ -257,11 +257,16 @@ Then load `dist/` the same way. `npm run package` produces
 > script injected once, on install. Tabs opened before *that* need one reload
 > before they can be captured — the popup tells you how many were skipped.
 
-### Building on Windows
+### Building from more than one platform
 
-If `node_modules` was installed from a Linux shell (WSL, a container, a remote
-session), esbuild's platform binary will be the Linux one. Run `npm install`
-once from Windows before `npm run build` there.
+esbuild ships a native binary per platform and resolves it out of
+`node_modules`, so a tree installed on Linux fails hard on Windows and vice
+versa — which matters here, because this repo gets built from a Windows shell
+and from a Linux sandbox.
+
+Both binaries are therefore declared as `optionalDependencies`, so a single
+`npm install` serves both and neither platform has to reinstall to take a turn.
+npm skips any it cannot use, so a clone elsewhere is unaffected.
 
 ---
 
