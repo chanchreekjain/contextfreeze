@@ -126,6 +126,11 @@ what gets a submission bounced.
 > open. Without it those tabs cannot be captured until the user manually reloads
 > each one, which is a confusing first-run experience.
 
+**Remote code**
+
+> No. All code is bundled into the package at build time. There are no external
+> scripts, no modules loaded from a network, and no eval.
+
 **`downloads`**
 > Saves the user's own exported checkpoints as a .md or .json file, from the
 > Export buttons in the popup. Used only in response to that click.
@@ -151,8 +156,13 @@ what gets a submission bounced.
 | Personal communications | **Yes** — a saved draft may be a message the user was writing. Stored locally only, never transmitted |
 | Location | No |
 | Web history | **Yes** — URLs of pages the user explicitly saves. Stored locally only |
-| User activity | No |
+| User activity | **Yes** — the category's own examples name *scroll*, and scroll position is exactly what this records. Only on pages the user has marked, and stored locally only |
 | Website content | **Yes** — form contents, selected text and scroll anchors from pages the user explicitly saves. Stored locally only |
+
+Under-disclosing is what gets an extension pulled after the fact, so where a
+category is arguable, tick it. "User activity" reads like behavioural tracking
+and this is not that — but the category's example list names scroll, and this
+records scroll. Say yes.
 
 All three certifications apply:
 
