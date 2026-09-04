@@ -173,6 +173,7 @@ function beginEdit(
     if (settled) return;
     settled = true;
     input.replaceWith(nameButton);
+    setStatus(""); // the prompt to type a name has been answered
     const trimmed = label?.trim();
     if (trimmed && trimmed !== current) await commit(trimmed);
   };
@@ -199,12 +200,14 @@ function describeFreeze(freeze: Freeze): string {
   const scrolls = freeze.tabs.reduce((n, t) => n + (t.context?.scrolls.length ?? 0), 0);
   const fields = freeze.tabs.reduce((n, t) => n + (t.context?.fields.length ?? 0), 0);
   const media = freeze.tabs.reduce((n, t) => n + (t.context?.media.length ?? 0), 0);
+  const highlights = freeze.tabs.filter((t) => t.context?.selection).length;
 
   const bits = [tabs + (tabs === 1 ? " tab" : " tabs")];
   if (withContext < tabs) bits.push(withContext + " with context");
   if (scrolls) bits.push(scrolls + " scroll");
   if (fields) bits.push(fields + (fields === 1 ? " field" : " fields"));
   if (media) bits.push(media + " media");
+  if (highlights) bits.push(highlights + (highlights === 1 ? " highlight" : " highlights"));
   return bits.join(" · ");
 }
 
