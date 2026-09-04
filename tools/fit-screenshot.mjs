@@ -4,6 +4,8 @@
  *   npm run screenshot -- shot.png                 -> 1280x800
  *   npm run screenshot -- a.png b.png c.png        -> all of them
  *   npm run screenshot -- shot.png 640 480         -> any size
+ *   npm run screenshot -- --fill --anchor=right shot.png   -> crop, do not pad
+ *   npm run screenshot -- --fill --crop=340,0,1580,988 shot.png
  *
  * Use forward slashes in paths. Git Bash treats a backslash as an escape
  * character, so C:\Users\CJ\shot.png arrives here as C:UsersCJshot.png.
@@ -13,6 +15,10 @@
  * way to spend an evening. Capture whatever you like, then run this: it scales
  * the image down if it is too big, centres it, and fills the rest with a colour
  * sampled from the image's own corner so the padding does not look bolted on.
+ *
+ * --fill crops to the aspect instead, which is what you want for a 16:9 desktop
+ * capture going onto a 16:10 canvas - bars top and bottom look like a mistake.
+ * --crop picks one window out of a whole-desktop capture first.
  */
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { basename, dirname, extname, join } from "node:path";
@@ -129,8 +135,28 @@ function bilinear(image, x, y) {
   return out.map(Math.round);
 }
 
+/** Extracts a sub-rectangle as a standalone image. */
+function crop(image, [x, y, width, height]) {
+  const out = Buffer.alloc(width * height * 4);
+  for (let row = 0; row < height; row++) {
+    const from = ((y + row) * image.width + x) * 4;
+    image.pixels.copy(out, row * width * 4, from, from + width * 4);
+  }
+  return { width, height, pixels: out };
+}
+
 function fit(input, target) {
-  const image = decodePng(readFileSync(input));
+  let image = decodePng(readFileSync(input));
+
+  if (CROP?.length === 4) {
+    const [x, y, w, h] = CROP;
+    if (x + w > image.width || y + h > image.height) {
+      throw new Error(`crop ${CROP.join(",")} falls outside ${image.width}x${image.height}`);
+    }
+    image = crop(image, CROP);
+  }
+
+  if (FILL) return fill(image, input, target);
 
   // Never scale up - enlarging a screenshot just makes it soft and obviously
   // stretched. Small captures get centred on the canvas instead.
@@ -169,11 +195,62 @@ function fit(input, target) {
   console.log(`${out}  (source ${image.width}x${image.height}, scaled ${Math.round(scale * 100)}%)`);
 }
 
+/** Crop to fill: no bars, no upscale, and the chosen edge is always kept. */
+function fill(image, input, target) {
+  const scale = Math.max(target.width / image.width, target.height / image.height);
+  const cropWidth = Math.min(image.width, Math.round(target.width / scale));
+  const cropHeight = Math.min(image.height, Math.round(target.height / scale));
+
+  const spareX = image.width - cropWidth;
+  const spareY = image.height - cropHeight;
+  const originX = ANCHOR === "right" ? spareX : ANCHOR === "left" ? 0 : Math.round(spareX / 2);
+  const originY = ANCHOR === "top" ? 0 : ANCHOR === "bottom" ? spareY : Math.round(spareY / 2);
+
+  const canvas = Buffer.alloc(target.width * target.height * 4);
+  for (let y = 0; y < target.height; y++) {
+    for (let x = 0; x < target.width; x++) {
+      const colour = bilinear(
+        image,
+        originX + (x * cropWidth) / target.width,
+        originY + (y * cropHeight) / target.height,
+      );
+      const i = (y * target.width + x) * 4;
+      canvas[i] = colour[0];
+      canvas[i + 1] = colour[1];
+      canvas[i + 2] = colour[2];
+      canvas[i + 3] = 255;
+    }
+  }
+
+  const out = join(
+    dirname(input),
+    `${basename(input, extname(input))}-${target.width}x${target.height}.png`,
+  );
+  writeFileSync(out, encodePng(target.width, target.height, canvas));
+  console.log(
+    `${out}  (cropped ${cropWidth}x${cropHeight} of ${image.width}x${image.height}, anchor ${ANCHOR})`,
+  );
+}
+
 /* -------------------------------------------------------------------- cli */
 
 const args = process.argv.slice(2);
-const sizes = args.filter((a) => /^\d+$/.test(a)).map(Number);
-const inputs = args.filter((a) => !/^\d+$/.test(a));
+const flags = args.filter((a) => a.startsWith("--"));
+const rest = args.filter((a) => !a.startsWith("--"));
+const sizes = rest.filter((a) => /^\d+$/.test(a)).map(Number);
+const inputs = rest.filter((a) => !/^\d+$/.test(a));
+
+// --fill crops to the target aspect instead of padding to it. A 1920x1080
+// capture padded to 1280x800 gets bars top and bottom; cropped, it fills the
+// frame exactly and nothing is scaled up. --anchor says which edge to keep when
+// trimming, because the interesting half of a browser screenshot is rarely the
+// middle - the popup is on the right.
+// --crop=x,y,w,h selects a region of the source first, in its own pixels.
+// Anchoring is a blunt instrument; sometimes you want a specific window out of
+// a desktop capture and nothing else.
+const CROP = flags.find((f) => f.startsWith("--crop="))?.split("=")[1]?.split(",").map(Number);
+const FILL = flags.includes("--fill");
+const ANCHOR = flags.find((f) => f.startsWith("--anchor="))?.split("=")[1] ?? "center";
 
 if (!inputs.length) {
   console.error("usage: npm run screenshot -- <file.png> [more.png ...] [width height]");

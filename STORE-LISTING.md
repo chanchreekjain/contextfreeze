@@ -206,9 +206,26 @@ with a colour sampled from the shot's own corner. Stores reject anything that is
 not exactly the advertised size, and dragging a window to precisely 1280×800 is
 a miserable way to spend an evening.
 
-Worth capturing:
+A 1920×1080 desktop capture is 16:9 and the canvas is 16:10, so padding it
+leaves bars top and bottom that read as a mistake. `--fill` crops to the aspect
+instead, and `--crop` picks one window out of a whole-desktop shot first:
 
-1. The popup open over a long article, showing several named checkpoints
-2. The popup on a YouTube video showing flags at timestamps
-3. A saved window in the list, with its tab count and name
-4. The Markdown export open in Notepad, showing a clickable timestamp link
+```bash
+npm run screenshot -- --fill --anchor=right shot.png
+npm run screenshot -- --fill --crop=828,16,1092,682 shot.png
+```
+
+### The ones in store/
+
+Committed and ready to upload, in this order:
+
+1. `screenshot-1-checkpoints.png` — the popup over a long article with three
+   named checkpoints and a saved window. This is the one that shows what the
+   thing *is*.
+2. `screenshot-2-highlight-restored.png` — a restored window with the
+   highlighted paragraph painted back in yellow. The strongest of the three:
+   it shows the promise being kept, not described.
+3. `screenshot-3-naming.png` — naming a checkpoint at the moment it is dropped.
+   The weakest, since Wikipedia's own sidebar takes up half the frame. Optional.
+
+Produced from three 1920×1080 captures with the exact commands recorded above.
